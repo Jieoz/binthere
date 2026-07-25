@@ -182,9 +182,14 @@
                                         stroke="currentColor"
                                         stroke-width="1.5"
                                     />
+                                    <!-- pathLength="1" normalizes the shackle so the
+                                         unlocked state can hide its closing leg with a
+                                         dash gap, and locking draws it shut (see .lock
+                                         in styles.css). Same trick as .seal-glyph. -->
                                     <path
                                         class="lock-shackle"
                                         d="M8 10.5V7.5a4 4 0 0 1 8 0v3"
+                                        pathLength="1"
                                         stroke="currentColor"
                                         stroke-width="1.5"
                                         stroke-linecap="round"

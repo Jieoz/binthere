@@ -71,7 +71,21 @@ function initCreate() {
   async function submitPaste(password) {
     createBtn.disabled = true;
     const label = sendTxt ? sendTxt.textContent : '';
-    if (sendTxt) sendTxt.textContent = 'Encrypting…';
+    // Press → the arrow leaves the button (`.sending`), then the composer follows
+    // it out and the success view takes over, so the arrow leads the navigation.
+    // Skipped under reduced motion: the CSS travel is off there, so the 32px jump
+    // would just make the arrow vanish.
+    const animate = !reducedMotion();
+    let relabel = null;
+    if (animate) {
+      createBtn.classList.add('sending');
+      // The label waits for the arrow to clear — swapping it mid-flight resizes
+      // the button and jogs the icon the eye is following.
+      relabel = setTimeout(() => { if (sendTxt) sendTxt.textContent = 'Encrypting…'; }, ARROW_LEAD_MS);
+    } else if (sendTxt) {
+      sendTxt.textContent = 'Encrypting…';
+    }
+    const arrowGone = animate ? wait(ARROW_LEAD_MS) : null;
     try {
       const { body, fragment } = await encryptPaste({
         text: $('#editor').value,
@@ -82,17 +96,34 @@ function initCreate() {
       });
       const { id, deletetoken } = await createPaste(body);
       const url = `${location.origin}/p/${id}#${fragment}`;
-      // Only after the server confirmed the create: the plaintext has served its
-      // purpose, so don't leave it sitting in the (now hidden) textarea. On any
+      clearTimeout(relabel);
+      if (arrowGone) await arrowGone; // never hand over ahead of the arrow
+      await leaveCreateView();
+      // Only after the server confirmed the create, and after the composer has
+      // left the screen so the editor is never seen blanking. The plaintext has
+      // served its purpose; don't leave it in the (now hidden) textarea. On any
       // failure it is deliberately kept — the user must not lose their note.
       $('#editor').value = '';
       showSuccess({ id, deletetoken, url, isBurn: true });
     } catch (e) {
+      clearTimeout(relabel);
+      createBtn.classList.remove('sending'); // the arrow glides back in
       showMsg(msg, friendlyError(e));
       createBtn.disabled = false;
       if (sendTxt) sendTxt.textContent = label;
     }
   }
+}
+
+// Slide the composer out behind the departing arrow. The class is dropped before
+// the caller swaps views, both within the same frame, so the faded sheet is never
+// seen snapping back.
+async function leaveCreateView() {
+  const view = $('#view-create');
+  if (!view || reducedMotion()) return;
+  view.classList.add('view-leaving');
+  await wait(VIEW_EXIT_MS);
+  view.classList.remove('view-leaving');
 }
 
 // ── password modal ───────────────────────────────────────────────────────────
@@ -495,6 +526,21 @@ function renderContent(container, result, isCode, showRaw) {
 }
 
 // ── shared helpers ───────────────────────────────────────────────────────────
+// Timings for the create→success hand-off; both are bound to styles.css
+// (`.send .send-ico` and `.view-leaving`) and must change with it. ARROW_LEAD_MS
+// is not the arrow's full 300ms transition but the point it clears the button's
+// edge: an ease-out over 32px covers the visible ~29px in under half that, so the
+// view leaves here and overlaps the invisible tail instead of waiting it out.
+const ARROW_LEAD_MS = 150;
+const VIEW_EXIT_MS = 170;
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// The stylesheet turns every animation and transition off under
+// `prefers-reduced-motion: reduce`, so don't sit through durations nothing spends.
+const reducedMotion = () =>
+  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 // Wire one or more [inputSel, btnSel] pairs to a shared reveal state, so a group
 // of fields holding the *same* secret (the modal's password + confirm) unmasks
 // as one — clicking either eye updates both fields and both icons. No secret is

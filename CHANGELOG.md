@@ -18,6 +18,16 @@ versioned separately from the application (see [`SPEC.md`](./SPEC.md), currently
 
 ### Changed
 
+- **The two composer controls animate their state changes.** Pressing **Create link** sends the
+  button's arrow out through its clipped edge, and the composer slides left as the success screen
+  takes over, so the arrow leads the transition rather than just acknowledging the press (~320ms,
+  the two halves overlapping). It is a transition rather than a keyframe, so a failed create
+  reverses it — the arrow glides back in and the button re-arms with the note untouched. The
+  **Password** lock now shows an open padlock at rest (both states drew the same closed one
+  before) and draws the shackle shut with a small pop when enabled. Both are a single class
+  toggle in CSS — no animation library, and nothing inline, so the CSP is unchanged.
+  `prefers-reduced-motion: reduce` skips the travel and the JS delays that wait on it, and still
+  shows the open and closed shackle as distinct states.
 - **New favicon.** The tab icon is now a simplified guilloché rosette in iron-gall blue
   on Plate paper — drawn from the same mark as the watermark and seal — replacing the
   pre-Iron-Gall brackets-and-keyhole placeholder. It follows the browser's
