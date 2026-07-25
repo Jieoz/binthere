@@ -183,6 +183,9 @@ npm run deploy           # creates the Worker, Durable Object, and rate limiter
 - Update the hardcoded canonical URLs: `og:url` / `og:image` in `public/index.html` and
   `Canonical` in `public/.well-known/security.txt` point at `binthere.gaury.dev`; the
   footer and `security.txt` `Policy` point at `github.com/nxfu/binthere`.
+- The link-preview card `public/opengraph.png` also has that domain printed on it. Edit
+  [`tools/opengraph.html`](./tools/opengraph.html) and re-render with `node tools/render-og.mjs`
+  (needs a local Chrome/Chromium; pass `--browser <path>` or set `$CHROME` if it isn't found).
 - `npm run dev` works with placeholder KV ids — KV is emulated locally.
 - **Cost note on `never` expiry:** the official clients always create 24-hour one-time
   notes, but the wire format (and the API) accepts `expire: "never"`. Such a paste is
@@ -237,6 +240,7 @@ src/
 test/              vitest suites (run in workerd) + genvectors.mjs (vector regenerator)
                    + vectors.expected.txt (pinned vector output, diffed in CI)
 tools/             verify-vectors.py — independent Python cross-check of the frozen vectors
+                   opengraph.html + render-og.mjs — source & renderer for public/opengraph.png
 cli/               the npm-published CLI client (own package.json + Node-environment tests;
                    vendor/ mirrors public/js/{bytes,format,crypto,qrcode}.js, drift-tested)
 SPEC.md SECURITY.md ARCHITECTURE.md

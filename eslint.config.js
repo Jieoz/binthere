@@ -1,7 +1,8 @@
 // ESLint flat config for binthere. Style is enforced lightly — the point is to
 // catch real bugs (undeclared globals, unused vars, accidental debugger) across
-// the three runtime surfaces: the browser client (public/js), the Worker (src),
-// and the vitest suites (test). The vendored qrcode.js is exempt.
+// the runtime surfaces: the browser client (public/js), the Worker (src), the
+// vitest suites (test), the CLI (cli), and build-time tooling (tools). The
+// vendored qrcode.js is exempt.
 import js from '@eslint/js';
 import globals from 'globals';
 
@@ -48,6 +49,12 @@ export default [
   // Its tests import vitest APIs explicitly, so plain Node globals suffice.
   {
     files: ['cli/**/*.js', 'cli/**/*.mjs'],
+    languageOptions: { globals: { ...globals.node } },
+  },
+
+  // Build-time asset tooling (tools/render-og.mjs): plain Node scripts, never shipped.
+  {
+    files: ['tools/**/*.mjs'],
     languageOptions: { globals: { ...globals.node } },
   },
 ];
