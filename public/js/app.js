@@ -110,8 +110,11 @@ function openPasswordModal(onSubmit) {
   const cancel = $('#pw-cancel');
   const mmsg = $('#pw-modal-msg');
   const opener = document.activeElement;
-  wirePeek('#modal-password', '#modal-peek');
-  wirePeek('#modal-password-confirm', '#modal-peek-confirm');
+  // One group: the confirm field holds the same secret, so both eyes toggle together.
+  wirePeek(
+    ['#modal-password', '#modal-peek'],
+    ['#modal-password-confirm', '#modal-peek-confirm'],
+  );
 
   const close = () => {
     scrim.hidden = true;
@@ -377,7 +380,7 @@ function promptPasswordBurn(id, fragment, head) {
 // (paste untouched) and otherwise transitions the view itself.
 function wirePasswordScreen(isBurn, verify) {
   showView('password');
-  wirePeek('#decrypt-password', '#peek2');
+  wirePeek(['#decrypt-password', '#peek2']);
   const sub = $('#password-subtitle');
   if (sub) {
     sub.textContent = isBurn
@@ -492,23 +495,37 @@ function renderContent(container, result, isCode, showRaw) {
 }
 
 // ── shared helpers ───────────────────────────────────────────────────────────
-function wirePeek(inputSel, btnSel) {
-  const input = $(inputSel);
-  const btn = $(btnSel);
-  if (!input || !btn) return;
+// Wire one or more [inputSel, btnSel] pairs to a shared reveal state, so a group
+// of fields holding the *same* secret (the modal's password + confirm) unmasks
+// as one — clicking either eye updates both fields and both icons. No secret is
+// exposed that the user hasn't already asked to see: the pair is two entries of
+// one password, on one screen, revealed only by explicit click.
+function wirePeek(...pairs) {
+  const fields = pairs
+    .map(([inputSel, btnSel]) => ({ input: $(inputSel), btn: $(btnSel) }))
+    .filter(({ input, btn }) => input && btn);
+  if (!fields.length) return;
+
+  // The eye / struck-eye icons are static markup in index.html; `revealed`
+  // picks which one is visible (see .peek in styles.css) — never touch the
+  // button's children, that would wipe them.
+  const paint = (show) => {
+    for (const { input, btn } of fields) {
+      input.type = show ? 'text' : 'password';
+      btn.classList.toggle('revealed', show);
+      btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      btn.setAttribute('aria-pressed', String(show));
+    }
+  };
+
   // Re-wiring means a fresh entry (modal reopened, password screen shown):
   // always start masked, even if the field was left revealed last time.
-  input.type = 'password';
-  btn.textContent = 'show';
-  btn.setAttribute('aria-label', 'Show password');
-  btn.setAttribute('aria-pressed', 'false');
-  btn.onclick = () => {
-    const show = input.type === 'password';
-    input.type = show ? 'text' : 'password';
-    btn.textContent = show ? 'hide' : 'show';
-    btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
-    btn.setAttribute('aria-pressed', String(show));
-  };
+  paint(false);
+  for (const { btn } of fields) {
+    // Read the state off the group, not this button, so both eyes agree even if
+    // one was somehow left out of sync.
+    btn.onclick = () => paint(fields[0].input.type === 'password');
+  }
 }
 
 // `reveal` shows the burn "reveal once" action block; callers opt in explicitly
