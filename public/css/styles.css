@@ -48,6 +48,7 @@
   --wm-opacity: .06;         /* rosette watermark strength */
 
   --ease: cubic-bezier(.22, .9, .28, 1);
+  --ease-io: cubic-bezier(.4, 0, .2, 1);   /* ease-in-out — the theme flip */
   --serif: 'Newsreader', Georgia, 'Times New Roman', serif;
   --sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -88,10 +89,11 @@ html.dark {
 html { color-scheme: light; }
 html.dark { color-scheme: dark; }
 html { background: var(--paper); color: var(--ink); font-size: 16px; scroll-behavior: smooth; scrollbar-width: thin; scrollbar-color: var(--rule-3) transparent; }
+/* No colour transition here — the theme flip is owned by one mechanism further
+   down (see "theme flip"), not by each surface on its own clock. */
 body { font-family: var(--sans); background: var(--paper); color: var(--ink); min-height: 100vh; line-height: 1.65;
   display: flex; flex-direction: column;
-  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; overflow-x: hidden;
-  transition: background .2s var(--ease), color .2s var(--ease); }
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; overflow-x: hidden; }
 /* Faint engraved-line grain — pure CSS, CSP-safe, decorative only. */
 body::before { content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background-image: repeating-linear-gradient(90deg, var(--grain) 0 1px, transparent 1px 4px);
@@ -120,6 +122,66 @@ a { color: var(--ink); text-decoration: none; transition: color .14s ease; }
    Views are re-shown by toggling [hidden], so `rise` restarts on its own. */
 @keyframes viewOut { to { opacity: 0; transform: translateX(-10px); } }
 .view-leaving { animation: viewOut .17s var(--ease) forwards; pointer-events: none; }
+
+/* ── theme flip: repaint, don't replace ──────────────────────────────────── */
+/* A palette swap touches things no property transition reaches — icon strokes,
+   shadows, the grain gradient, `color-mix` borders — so it runs on snapshots of
+   the painted page. Not a crossfade, though: the old frame is held still and the
+   new one is unmasked over it, top-right (where the toggle is) to bottom-left, so
+   the colours wash across rather than the page being swapped out. theme.js mirrors
+   the 520ms; without View Transitions it falls back to `html.theming` below. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  /* The UA cross-fade blends the pair with plus-lighter, which *adds* them: light
+     + dark would bloom to grey inside the wave. */
+  mix-blend-mode: normal;
+}
+/* Held still — this is what keeps components in place and the viewport covered. */
+::view-transition-old(root) { animation: none; }
+/* Only the mask moves; no opacity or transform, so nothing fades or shifts. The
+   static position is the finished state, so if the animation is ever dropped the
+   new palette is simply there. -webkit- pairs for Chromium 111–119, which had
+   View Transitions before unprefixed masks. */
+::view-transition-new(root) {
+  mask-image: linear-gradient(to bottom left, #000 0 46%, transparent 56%);
+  -webkit-mask-image: linear-gradient(to bottom left, #000 0 46%, transparent 56%);
+  mask-size: 300% 300%; -webkit-mask-size: 300% 300%;
+  mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+  mask-position: 100% 0%; -webkit-mask-position: 100% 0%;
+  animation-name: themeWash;
+  animation-duration: 520ms;
+  animation-timing-function: var(--ease-io);
+  /* `both`: without the backwards fill the new palette shows whole for a frame. */
+  animation-fill-mode: both;
+}
+/* 3× the viewport so both ends of the sweep clear the mask — otherwise the flip
+   starts or ends part-masked. That leaves a soft band about a third of the
+   diagonal wide; corner gradients run perpendicular to the diagonal, so the wave
+   front is parallel to it. */
+@keyframes themeWash {
+  from { mask-position: 0% 100%; -webkit-mask-position: 0% 100%; }
+  to { mask-position: 100% 0%; -webkit-mask-position: 100% 0%; }
+}
+
+/* The snapshots own the animation while the wave runs, so don't let components
+   transition underneath — that renders the old colour inside the new snapshot.
+   Its own rule: an engine that doesn't know `:active-view-transition` should drop
+   only this block, not the rules above. */
+html:active-view-transition *,
+html:active-view-transition *::before,
+html:active-view-transition *::after { transition: none !important; }
+
+/* Fallback without View Transitions: interpolate the colours in place — same
+   repaint, just everywhere at once instead of as a wave (that needs snapshots).
+   `!important` to outrank each component's own shorter transition for the length
+   of the flip; theme.js drops the class afterwards. No transform here either — one
+   on the page would reparent the fixed watermark and toast. */
+html.theming, html.theming *, html.theming *::before, html.theming *::after {
+  transition: background-color 520ms var(--ease-io), background-image 520ms var(--ease-io),
+    color 520ms var(--ease-io), border-color 520ms var(--ease-io), box-shadow 520ms var(--ease-io),
+    fill 520ms var(--ease-io), stroke 520ms var(--ease-io), outline-color 520ms var(--ease-io),
+    text-decoration-color 520ms var(--ease-io) !important;
+}
 
 /* ── guilloché watermark (landing ambience; pure ornament) ───────────────── */
 .watermark { position: fixed; z-index: 0; top: -120px; right: -140px; width: 460px; height: 460px;
@@ -182,8 +244,9 @@ html.dark .theme-toggle .ico-moon { display: block; }
 .subtitle { font-size: .9375rem; line-height: 1.65; color: var(--ink-2); margin-top: .95rem; max-width: 52ch; }
 
 /* ── editor sheet (the document) ─────────────────────────────────────────── */
+/* Focus states only; the theme flip is handled centrally (see "theme flip"). */
 .editor-box { background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; box-shadow: var(--shadow-sheet);
-  transition: border-color .14s ease, box-shadow .14s ease, background-color .2s var(--ease); }
+  transition: border-color .14s ease, box-shadow .14s ease; }
 .editor-box:focus-within { border-color: var(--ring); box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ring); }
 /* Progressive enhancement: the sheet ring belongs to the writing surface. When a
    toolbar button inside is focused it carries its own ring — don't stack both. */
@@ -437,6 +500,9 @@ html.dark .theme-toggle .ico-moon { display: block; }
 /* ── reduced motion: everything off, nothing hidden ──────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+  /* `*` doesn't reach the view-transition pseudos. theme.js already skips the
+     wave here; this keeps one inert if it is ever started anyway. */
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; }
   .reveal { opacity: 1; }
   html { scroll-behavior: auto; }
 }

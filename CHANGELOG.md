@@ -18,6 +18,19 @@ versioned separately from the application (see [`SPEC.md`](./SPEC.md), currently
 
 ### Changed
 
+- **The light/dark toggle now repaints the interface instead of snapping.** The flip runs inside a
+  **View Transition**: the outgoing frame is held still and the new palette is unmasked over it
+  along a soft diagonal, from the toggle in the top-right down to the bottom-left, over 520ms.
+  Neither frame changes opacity or transform, so components stay exactly where they are and
+  nothing fades in or out. Previously only the page background and body text animated (200ms) and
+  everything else — icon strokes, shadows, the grain gradient, `color-mix` borders — snapped.
+  Snapshots are composited rather than laid out, so there is no reflow and an open password modal,
+  a decrypted note, scroll position and focus all survive the flip. One gotcha worth recording:
+  the UA cross-fade blends its two snapshots with `plus-lighter`, which *adds* them, so a light
+  and a dark palette bloom to grey inside the wave until it is overridden to `normal`. Engines
+  without View Transitions (pre-111 Chromium, pre-18 Safari, pre-144 Firefox) get the same
+  repaint as a blanket colour transition, minus the direction; `prefers-reduced-motion: reduce`
+  flips outright.
 - **The two composer controls animate their state changes.** Pressing **Create link** sends the
   button's arrow out through its clipped edge, and the composer slides left as the success screen
   takes over, so the arrow leads the transition rather than just acknowledging the press (~320ms,
