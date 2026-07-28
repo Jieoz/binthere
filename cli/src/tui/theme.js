@@ -17,6 +17,7 @@ export function makeTheme(io) {
     dim: paint('2'),
     // Brand colors brightened for readability on dark terminals.
     accent: paint(truecolor ? '38;2;106;148;186' : '34'),
+    accentBold: paint(truecolor ? '1;38;2;142;188;226' : '1;34'),
     danger: paint(truecolor ? '38;2;192;85;74' : '31'),
   };
 }

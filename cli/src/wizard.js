@@ -14,7 +14,7 @@ import { cmdDelete } from './commands/delete.js';
 import { cmdGet } from './commands/get.js';
 import { UsageError } from './errors.js';
 import { renderQrCompact } from './qr.js';
-import { CLEAR_LINE, playIntro, shimmerWhile, SWEEP_EVERY_MS, withSpinner } from './tui/anim.js';
+import { CLEAR_LINE, playIntro, reducedMotion, SHINE_CYCLE_MS, shimmerWhile, withSpinner } from './tui/anim.js';
 import { selectMenu } from './tui/menu.js';
 import { center, CLEAR, ERASE_EOL, footer, HIDE_CURSOR, introDelays, LOGO, logoEmber, logoIntroFrame, logoSweepFrame, MIN_WIDTH, moveTo, paintedLogo, RESET_BG, RESTORE_CURSOR, rule, SAVE_CURSOR, SET_BG, SHOW_CURSOR, SWEEP_MS } from './tui/screen.js';
 import { makeTheme } from './tui/theme.js';
@@ -23,11 +23,8 @@ import { buildShareUrl, DEFAULT_SERVER, isBurnId, normalizeServer, parseShareUrl
 const LIFECYCLE_SENTENCE = LIFECYCLE_NOTE.charAt(0).toUpperCase() + LIFECYCLE_NOTE.slice(1) + '.';
 
 /**
- * Open a fresh screen for one wizard step: clear (TTY only), the ember +
- * gradient wordmark, a breathing row, and a bold title — every line centered
- * on the terminal, Yoinks-style. Kept to seven rows so the result screen
- * (title + link + QR + token) still fits a small terminal. Narrow terminals
- * get a plain title.
+ * Clear the viewport and draw a centered page header. Narrow terminals omit
+ * the logo.
  */
 function screenHeader(io, theme, title, subtitle = '') {
   const cols = io.columns();
@@ -49,6 +46,24 @@ function screenHeader(io, theme, title, subtitle = '') {
 
 /** Left pad that puts the logo where centered header lines drew it. */
 const logoPad = (io) => Math.max(0, Math.floor((io.columns() - LOGO[0].length) / 2));
+
+/**
+ * Build the absolute-position result-logo painter. It returns false after a
+ * resize so the scheduler stops using invalid coordinates.
+ */
+export function resultShine(io, theme, { width, used }) {
+  const initialColumns = io.columns();
+  const initialRows = io.rows();
+  if (reducedMotion(io) || width < MIN_WIDTH || initialRows < used + 3) return null;
+  return (t) => {
+    if (io.columns() !== initialColumns || io.rows() !== initialRows) return false;
+    io.stderr(SAVE_CURSOR
+      + (t === null ? paintedLogo(theme) : logoSweepFrame(theme, t))
+        .map((l, i) => moveTo(2 + i, 1) + ' '.repeat(logoPad(io)) + l).join('')
+      + RESTORE_CURSOR);
+    return true;
+  };
+}
 
 // A pasted share URL runs ~96 columns; the input line starts where one would
 // sit centered, so the paste lands visually centered under its label (narrow
@@ -155,12 +170,7 @@ async function tuiCreate(io, theme, server) {
   // cursor). Skipped when the narrow header drew no logo, or when the screen
   // scrolled (+3 = copy footer rows and the cursor line) and rows 2–4 no
   // longer hold it.
-  const sweep = rw >= MIN_WIDTH && io.rows() >= used + 3
-    ? (t) => io.stderr(SAVE_CURSOR
-      + (t === null ? paintedLogo(theme) : logoSweepFrame(theme, t))
-        .map((l, i) => moveTo(2 + i, 1) + ' '.repeat(logoPad(io)) + l).join('')
-      + RESTORE_CURSOR)
-    : null;
+  const sweep = resultShine(io, theme, { width: rw, used });
   await copyKeys(io, theme, url, deletetoken, sweep);
   return 0;
 }
@@ -179,10 +189,18 @@ async function copyKeys(io, theme, url, deletetoken, sweep = null) {
     ['t', 'copy token'],
     ['↵', 'done'],
   ], theme)) + '\n');
+  // Reuse the schedule so copy actions do not restart the cadence.
+  const shineSchedule = sweep ? { nextAt: performance.now() } : null;
   if (sweep) io.stderr(HIDE_CURSOR);
   try {
+    let activeSweep = sweep;
     for (;;) {
-      const key = sweep ? await shimmerWhile(io.readKey(), sweep) : await io.readKey();
+      const key = activeSweep
+        ? await shimmerWhile(io.readKey(), (t) => {
+          if (activeSweep?.(t) === false) { activeSweep = null; return false; }
+          return true;
+        }, { schedule: shineSchedule })
+        : await io.readKey();
       if (key !== 'c' && key !== 't') {
         io.stderr('\n');
         return;
@@ -235,6 +253,7 @@ export async function runWizard(io) {
   const theme = makeTheme(io);
   const server = normalizeServer(io.env.BINTHERE_SERVER ?? DEFAULT_SERVER);
   const width = Math.min(io.columns(), 100);
+  const motion = !reducedMotion(io);
 
   const home = (logoRows, ember) => {
     const cols = io.columns();
@@ -251,40 +270,28 @@ export async function runWizard(io) {
     ];
   };
 
-  // Faint brand-blue wash behind the whole wizard (Yoinks paints its theme
-  // background the same way); the finally below restores the terminal's own
-  // background even when a step aborts.
+  // Restore the terminal background even when a step aborts.
   const washed = theme.on && theme.truecolor && io.stderrIsTTY === true;
   if (washed) io.stderr(SET_BG);
   try {
-    // The wordmark materialises in (per-glyph ░ → ▒ → █ flicker) at the top,
-    // glides down to the menu's vertically-centered resting spot over a
-    // second, and only then does the menu appear — with the Yoinks logo
-    // cadence: a 1s shine beam sweeps the wordmark after every 7s of rest,
-    // and between sweeps the ember smoulders on its own 700ms beat while the
-    // rest of the header stays byte-identical.
-    if (width >= MIN_WIDTH && io.env.TERM !== 'dumb') {
+    // Materialize the wordmark, then move it to the menu's centered position.
+    if (motion && width >= MIN_WIDTH && io.env.TERM !== 'dumb') {
       // Keystrokes during the intro would echo over the animation and buffer
       // into the menu's first read — swallow them until the menu takes over.
       const unmute = typeof io.muteInput === 'function' ? io.muteInput() : null;
       try {
         const delays = introDelays();
         await playIntro(io, (t) => home(logoIntroFrame(theme, t, delays), logoEmber(theme)));
-        // The menu vertically centers header + body; for three boxed items the
-        // body adds items + 5 rows (blank, box, blank, hints) — landing the
-        // slide exactly where selectMenu will redraw the header, jump-free.
+        // Account for the menu body so the intro ends at its resting row.
         const MENU_BODY_ROWS = 3 + 5;
-        const SLIDE_MS = 1000;
-        // Ease-in-out: the glide gathers speed gently and settles gently, so
-        // the row-quantized motion reads smooth at both ends.
+        const SLIDE_MS = 520;
         const glide = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
         const drop = (lines) => Math.max(0, Math.floor((io.rows() - 1 - (lines.length + MENU_BODY_ROWS)) / 2));
         if (drop(home(paintedLogo(theme), logoEmber(theme))) > 0) {
           await playIntro(io, (t) => {
             const lines = home(paintedLogo(theme), logoEmber(theme));
             const pad = Math.round(glide(Math.min(t / SLIDE_MS, 1)) * drop(lines));
-            // ERASE_EOL per row wipes what the slide just vacated, so the frame
-            // may grow taller between redraws without leaving stale glyphs.
+            // Clear the unused part of rows as the frame height changes.
             return [...Array.from({ length: pad }, () => ''), ...lines].map((l) => l + ERASE_EOL);
           }, SLIDE_MS);
         }
@@ -293,10 +300,10 @@ export async function runWizard(io) {
       }
     }
 
-    const EMBER_TICK = 700;
-    const CYCLE = SWEEP_EVERY_MS + SWEEP_MS;
+    const EMBER_CYCLE = 1800;
+    const EMBER_FRAME = theme.on && theme.truecolor ? 80 : 700;
     const t0 = Date.now();
-    const phase = () => (Date.now() - t0) % CYCLE;
+    const phase = () => (Date.now() - t0) % SHINE_CYCLE_MS;
     const header = () => {
       if (width < MIN_WIDTH) {
         const cols = io.columns();
@@ -308,13 +315,16 @@ export async function runWizard(io) {
       }
       const elapsed = Date.now() - t0;
       const p = phase();
-      const logoRows = p >= SWEEP_EVERY_MS ? logoSweepFrame(theme, p - SWEEP_EVERY_MS) : paintedLogo(theme);
-      return home(logoRows, logoEmber(theme, Math.floor(elapsed / EMBER_TICK) % 2 === 0));
+      const logoRows = motion && p < SWEEP_MS ? logoSweepFrame(theme, p) : paintedLogo(theme);
+      const breath = motion
+        ? 0.2 + 0.8 * (0.5 + 0.5 * Math.cos((elapsed / EMBER_CYCLE) * Math.PI * 2))
+        : 1;
+      return home(logoRows, logoEmber(theme, breath));
     };
     const tick = () => {
       const p = phase();
-      if (p >= SWEEP_EVERY_MS) return 33; // mid-sweep: ~30fps
-      return Math.max(16, Math.min(SWEEP_EVERY_MS - p, EMBER_TICK - ((Date.now() - t0) % EMBER_TICK)));
+      if (p < SWEEP_MS) return 1000 / 60;
+      return Math.max(16, Math.min(SHINE_CYCLE_MS - p, EMBER_FRAME));
     };
 
     const action = await selectMenu([

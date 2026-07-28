@@ -75,8 +75,8 @@ glyph by glyph, then pick an action with the arrow keys (or `1`–`3`) and confi
 
 - **Create** — write (or paste) your note on its own screen, press **Ctrl+Q** to seal it,
   optionally add a password, and get the share link, a scannable **terminal QR code**, and
-  the delete token on a result screen (the typed note is cleared from view; a shine beam
-  sweeps the wordmark now and then while you decide). Press **c**
+  the delete token on a fresh result screen (the typed note is cleared from view; a shine
+  beam sweeps the wordmark immediately and then every six seconds). Press **c**
   there to copy the link to the clipboard, **t** for the delete token — via the platform's
   native tool (`clip` / `pbcopy` / `wl-copy` / `xclip` / `xsel`, fed over stdin so secrets
   never hit argv), with an OSC 52 escape fallback that works over SSH.
@@ -88,6 +88,8 @@ All decoration is drawn on stderr; only machine-readable output (the share URL o
 the plaintext on view) goes to stdout, so `binthere | pbcopy` (macOS) or `binthere | clip`
 (Windows) still copies just the link. Colors follow the website's palette, degrade to
 16-color terminals, and switch off entirely under `NO_COLOR` or when stderr is not a TTY.
+Set `BINTHERE_NO_ANIMATION=1` to retain colors and the full-screen TUI while disabling the
+intro, shine, ember pulse, and rotating spinner (useful for accessibility and remote shells).
 
 ### Scripting
 
@@ -151,6 +153,7 @@ only in the `X-Delete-Token` header, never in a URL.
 | Flag / env | Meaning |
 | --- | --- |
 | `-s, --server <url>` | API origin for `create`/`delete` (default `$BINTHERE_SERVER`, then `https://binthere.gaury.dev`); `get` takes it from the share URL |
+| `$BINTHERE_NO_ANIMATION=1` | Disable non-essential TUI motion while retaining colors and interaction |
 | `--help`, `--version` | The usual |
 
 HTTPS is enforced for every server except `localhost` / `127.0.0.1` (for `wrangler dev`).

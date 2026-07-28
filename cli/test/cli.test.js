@@ -518,6 +518,23 @@ describe('interactive wizard (bare `binthere` on a TTY)', () => {
     expect(copied).toEqual([url, token]); // stdin-fed fakes — secrets never in argv
     expect(a.text.err()).toContain('link copied to clipboard');
     expect(a.text.err()).toContain('delete token copied to clipboard');
+    // Menu → create → sealed result each performs one fresh viewport paint.
+    expect(a.text.err().split(`${String.fromCharCode(0x1b)}[2J`).length - 1).toBeGreaterThanOrEqual(3);
+  });
+
+  it('supports a static full-screen wizard without disabling color', async () => {
+    const server = makeServer();
+    const a = makeIo({
+      server, tty: true, stderrIsTTY: true,
+      env: { BINTHERE_NO_ANIMATION: '1', COLORTERM: 'truecolor' },
+      readKey: scripted(['enter', 'enter']),
+      promptMultiline: scripted(['still and readable']),
+    });
+    expect(await run([], a.io)).toBe(0);
+    expect(a.text.err()).toContain(`${String.fromCharCode(0x1b)}[38;2;`); // color remains
+    expect(a.text.err()).not.toContain(`\r${String.fromCharCode(0x1b)}[2K`); // no animated line rewrites
+    expect(a.text.out()).toMatch(/\/p\/b/);
+    expect(a.text.err().split(`${String.fromCharCode(0x1b)}[2J`).length - 1).toBe(3);
   });
 
   it('result screen skips the copy prompt when stderr is not a TTY', async () => {

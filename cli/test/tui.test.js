@@ -1,11 +1,12 @@
 // tui.test.js — pure renderers and key decoding for the full-screen wizard UI.
 import { describe, expect, it } from 'vitest';
-import { CLEAR_LINE, playIntro, shimmerWhile, SPINNER, withSpinner } from '../src/tui/anim.js';
+import { CLEAR_LINE, playIntro, reducedMotion, SHINE_CYCLE_MS, shimmerWhile, SPINNER, withSpinner } from '../src/tui/anim.js';
 import { osc52, tools } from '../src/tui/clipboard.js';
 import { decodeKey } from '../src/tui/keys.js';
 import { renderMenu, selectMenu } from '../src/tui/menu.js';
 import { box, center, footer, introDelays, LOGO, logoIntroFrame, logoSweepFrame, MIN_WIDTH, paintedLogo, rule, stripAnsi, SWEEP_MS } from '../src/tui/screen.js';
 import { makeTheme } from '../src/tui/theme.js';
+import { resultShine } from '../src/wizard.js';
 
 const ESC = String.fromCharCode(0x1b);
 
@@ -37,6 +38,7 @@ describe('theme', () => {
   it('paints with truecolor brand codes on a TTY', () => {
     expect(ttyTheme.on).toBe(true);
     expect(ttyTheme.accent('x')).toBe(`${ESC}[38;2;106;148;186mx${ESC}[0m`);
+    expect(ttyTheme.accentBold('x')).toBe(`${ESC}[1;38;2;142;188;226mx${ESC}[0m`);
     expect(ttyTheme.danger('x')).toBe(`${ESC}[38;2;192;85;74mx${ESC}[0m`);
   });
 
@@ -94,6 +96,7 @@ describe('screen builders', () => {
     ]);
     const painted = box([ttyTheme.accent('ab')], ttyTheme);
     expect(stripAnsi(painted[1])).toBe('│ ab │');
+    expect(stripAnsi(box(['a long row'], ttyTheme, { label: 'menu' })[0])).toBe('╭─ menu ─────╮');
   });
 
   it('footer joins key hints with separators', () => {
@@ -170,6 +173,16 @@ describe('logo intro', () => {
     expect(err).toBe('');
   });
 
+  it('playIntro is a no-op when animation is disabled', async () => {
+    let err = '';
+    const io = {
+      stderr: (s) => { err += s; }, stderrIsTTY: true, env: { BINTHERE_NO_ANIMATION: '1' },
+    };
+    expect(reducedMotion(io)).toBe(true);
+    await playIntro(io, () => ['x'], 30);
+    expect(err).toBe('');
+  });
+
   it('playIntro redraws frames in place for the given duration', async () => {
     let err = '';
     const ts = [];
@@ -188,10 +201,11 @@ describe('logo shine sweep', () => {
     expect(logoSweepFrame(plainTheme, SWEEP_MS)).toEqual(LOGO);
   });
 
-  it('lightens full blocks to ▒ mid-sweep and never swaps half blocks', () => {
-    const mid = logoSweepFrame(plainTheme, 450);
+  it('draws a bright core mid-sweep and never swaps half blocks', () => {
+    const mid = logoSweepFrame(plainTheme, SWEEP_MS / 2);
     expect(mid).not.toEqual(LOGO);
-    expect(mid.join('\n')).toContain('▒');
+    expect(mid.join('\n')).toMatch(/[▓▒]/);
+    expect(logoSweepFrame(ttyTheme, SWEEP_MS / 2).join('\n')).toContain('38;2;');
     for (let t = 0; t <= SWEEP_MS; t += 50) {
       logoSweepFrame(ttyTheme, t).forEach((row, r) => {
         const glyphs = stripAnsi(row);
@@ -206,18 +220,67 @@ describe('logo shine sweep', () => {
 
   it('shimmerWhile resolves immediately when the key is already pressed', async () => {
     const frames = [];
-    const out = await shimmerWhile(Promise.resolve('enter'), (t) => frames.push(t), { everyMs: 5 });
+    const out = await shimmerWhile(Promise.resolve('enter'), (t) => frames.push(t), { cycleMs: 20 });
     expect(out).toBe('enter');
     expect(frames).toEqual([]);
   });
 
-  it('shimmerWhile plays sweep frames while idle and restores the resting frame', async () => {
+  it('shimmerWhile starts immediately, loops, and restores the resting frame', async () => {
     const frames = [];
     const pending = new Promise((resolve) => setTimeout(() => resolve('enter'), 150));
-    const out = await shimmerWhile(pending, (t) => frames.push(t), { everyMs: 20, sweepMs: 60 });
+    const out = await shimmerWhile(pending, (t) => frames.push(t), { cycleMs: 80, sweepMs: 35 });
     expect(out).toBe('enter');
     expect(frames.some((t) => typeof t === 'number')).toBe(true);
+    // Each null closes one completed pass; two prove that it looped.
+    expect(frames.filter((t) => t === null).length).toBeGreaterThanOrEqual(2);
     expect(frames[frames.length - 1]).toBe(null);
+  });
+
+  it('uses a six-second start-to-start shine cadence', () => {
+    expect(SHINE_CYCLE_MS).toBe(6000);
+  });
+
+  it('preserves the cadence across consecutive handled keys', async () => {
+    const schedule = { nextAt: performance.now() };
+    const firstFrames = [];
+    const first = new Promise((resolve) => setTimeout(() => resolve('c'), 25));
+    await expect(shimmerWhile(first, (t) => firstFrames.push(t), {
+      cycleMs: 80, sweepMs: 15, schedule,
+    })).resolves.toBe('c');
+    expect(firstFrames.some((t) => typeof t === 'number')).toBe(true);
+
+    const secondFrames = [];
+    const second = new Promise((resolve) => setTimeout(() => resolve('enter'), 25));
+    await expect(shimmerWhile(second, (t) => secondFrames.push(t), {
+      cycleMs: 80, sweepMs: 15, schedule,
+    })).resolves.toBe('enter');
+    expect(secondFrames).toEqual([]);
+  });
+
+  it('stops absolute result-logo painting after a terminal resize', () => {
+    let cols = 80;
+    let rows = 40;
+    let err = '';
+    const io = {
+      stderr: (s) => { err += s; }, stderrIsTTY: true, env: { NO_COLOR: '1' },
+      columns: () => cols, rows: () => rows,
+    };
+    const shine = resultShine(io, makeTheme(io), { width: 80, used: 12 });
+    expect(shine).toBeTypeOf('function');
+    expect(shine(SWEEP_MS / 2)).toBe(true);
+    const beforeResize = err;
+    cols = 70;
+    rows = 30;
+    expect(shine(SWEEP_MS / 2)).toBe(false);
+    expect(err).toBe(beforeResize);
+  });
+
+  it('does not create a result shine under reduced motion', () => {
+    const io = {
+      stderr: () => {}, stderrIsTTY: true, env: { BINTHERE_NO_ANIMATION: '1' },
+      columns: () => 80, rows: () => 40,
+    };
+    expect(resultShine(io, makeTheme(io), { width: 80, used: 12 })).toBeNull();
   });
 });
 
@@ -265,6 +328,17 @@ describe('withSpinner', () => {
     await expect(withSpinner(io, theme, 'x', () => Promise.reject(new Error('boom'))))
       .rejects.toThrow('boom');
     expect(err.endsWith(CLEAR_LINE)).toBe(true);
+  });
+
+  it('prints static progress on a TTY when animation is disabled', async () => {
+    let err = '';
+    const io = {
+      stderr: (s) => { err += s; }, stderrIsTTY: true, env: { BINTHERE_NO_ANIMATION: '1' },
+    };
+    const theme = makeTheme(io);
+    await expect(withSpinner(io, theme, 'sealing…', async () => 'ok')).resolves.toBe('ok');
+    expect(err).toBe(theme.dim('sealing…') + '\n');
+    expect(err).not.toContain(SPINNER[0]);
   });
 });
 
@@ -344,10 +418,26 @@ describe('selectMenu', () => {
     expect(err).toContain('frame 2');
   });
 
+  it('does not tick an animated header when animation is disabled', async () => {
+    const frames = [];
+    const io = {
+      stderr: () => {},
+      stderrIsTTY: true,
+      columns: () => 80,
+      env: { BINTHERE_NO_ANIMATION: '1', NO_COLOR: '1' },
+      readKey: () => Promise.resolve('enter'),
+    };
+    await expect(selectMenu(items, io, {
+      header: (frame) => { frames.push(frame); return [`frame ${frame}`]; },
+      tick: 10,
+    })).resolves.toBe('create');
+    expect(frames).toEqual([0]);
+  });
+
   it('boxes and centers the items on wide terminals', async () => {
     const { io, stderr } = makeIo(['enter']);
     await selectMenu(items, io);
-    expect(stderr()).toMatch(/^ +╭─+╮$/m);
+    expect(stderr()).toMatch(/^ +╭─ actions ─+╮$/m);
     expect(stderr()).toMatch(/^ +│ ❯ 1 Create │$/m);
     expect(stderr()).toMatch(/^ +│ {3}2 View {3}│$/m);
     expect(stderr()).toMatch(/^ +╰─+╯$/m);

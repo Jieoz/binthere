@@ -2,6 +2,7 @@
 // selectMenu drives frames on stderr and reads keys via the injected io, so
 // tests can script the whole interaction without a TTY.
 import { AbortError } from '../errors.js';
+import { reducedMotion } from './anim.js';
 import { box, center, CLEAR, footer, HIDE_CURSOR, HOME, MIN_WIDTH, SHOW_CURSOR } from './screen.js';
 import { makeTheme } from './theme.js';
 
@@ -12,9 +13,9 @@ import { makeTheme } from './theme.js';
 export function renderMenu(items, selected, theme, { descs = true } = {}) {
   const labelWidth = Math.max(...items.map((item) => item.label.length));
   return items.map((item, i) => {
-    const hotkey = theme.dim(`${i + 1}`);
+    const hotkey = i === selected ? theme.accentBold(`${i + 1}`) : theme.dim(`${i + 1}`);
     const marker = i === selected ? theme.accent('❯') : ' ';
-    const label = i === selected ? theme.bold(item.label) : item.label;
+    const label = i === selected ? theme.accentBold(item.label) : item.label;
     const desc = descs && item.desc
       ? `${' '.repeat(labelWidth - item.label.length)}   ${theme.dim(item.desc)}`
       : '';
@@ -25,12 +26,13 @@ export function renderMenu(items, selected, theme, { descs = true } = {}) {
 /**
  * Full-screen menu: caller-built header on top, items with descriptions in a
  * rounded hairline box (wide terminals), key-hint footer, optional status
- * lines at the bottom — every line centered (Yoinks-style), and the whole
- * frame vertically centered on a TTY. `header` may be a function of an
+ * lines at the bottom, and vertical centering on a TTY. `header` may be a function of an
  * animation frame counter; with `tick` (a delay in ms, or a function of the
  * frame returning one) on a TTY, idle redraws advance it (the frame shape
  * must stay constant — redraws overwrite in place).
- * Resolves with the selected item's `value`. Ctrl+C / Esc / q abort.
+ * The first TTY paint always clears the viewport, even if an intro or prior
+ * page happened to leave an identically shaped frame behind. Resolves with
+ * the selected item's `value`. Ctrl+C / Esc / q abort.
  */
 export async function selectMenu(items, io, { header = [], status = [], tick = 0 } = {}) {
   const fancy = io.stderrIsTTY === true;
@@ -46,14 +48,15 @@ export async function selectMenu(items, io, { header = [], status = [], tick = 0
     const headerLines = typeof header === 'function' ? header(frame) : header;
     const out = [...headerLines, ''];
     const lines = renderMenu(items, selected, theme, { descs: wide });
-    const hints = footer([
+    const hintItems = [
       ['↑↓', 'move'],
       ['↵', 'select'],
-      ['1-' + items.length, 'jump'],
+      ...(wide ? [['1-' + items.length, 'jump']] : []),
       ['^c', 'quit'],
-    ], theme);
+    ];
+    const hints = footer(hintItems, theme);
     if (wide) {
-      out.push(...box(lines, theme).map((l) => center(l, cols)));
+      out.push(...box(lines, theme, { label: 'actions' }).map((l) => center(l, cols)));
     } else {
       out.push(...lines.map((l) => center(l, cols)));
     }
@@ -73,7 +76,7 @@ export async function selectMenu(items, io, { header = [], status = [], tick = 0
   };
 
   const theme = makeTheme(io);
-  const animate = fancy && (typeof tick === 'function' || tick > 0);
+  const animate = fancy && !reducedMotion(io) && (typeof tick === 'function' || tick > 0);
   const TICK = Symbol('tick');
   if (fancy) io.stderr(HIDE_CURSOR);
   try {

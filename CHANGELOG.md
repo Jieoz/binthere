@@ -18,6 +18,12 @@ versioned separately from the application (see [`SPEC.md`](./SPEC.md), currently
 
 ### Changed
 
+- **The CLI TUI has smoother motion and clearer page transitions.** Animation uses
+  deadline-based frame pacing; the logo shine starts immediately and repeats every six
+  seconds; menu selection, the intro, ember pulse, and progress spinner were refined; and
+  each wizard page clears the viewport before drawing. `BINTHERE_NO_ANIMATION=1` disables
+  non-essential motion without disabling colors or keyboard interaction. Result-screen
+  shine stops after a terminal resize rather than repainting stale absolute coordinates.
 - **The light/dark toggle now repaints the interface instead of snapping.** The flip runs inside a
   **View Transition**: the outgoing frame is held still and the new palette is unmasked over it
   along a soft diagonal, from the toggle in the top-right down to the bottom-left, over 520ms.
