@@ -56,12 +56,14 @@ patch, back up, or keep online yourself.
 The whole design rests on one trick: **where the decryption key lives**. It travels in the
 URL fragment — the part after `#` — which browsers never send to any server.
 
-```
-you type ──▶ browser encrypts (AES-256-GCM) ──▶ Worker stores ciphertext only
-                     │                                      │
-              key stays in the URL #fragment          KV or Durable Object
-                     │                                      │
-recipient opens link ─▶ browser fetches ciphertext ─▶ browser decrypts ─▶ plaintext
+```mermaid
+flowchart TD
+    A([You write a note]) --> B[Your browser locks it<br/>before it leaves your device]
+    B -->|locked note only| C[(Server stores it<br/>for up to 24 hours)]
+    B -->|the secret key stays here| D[Share link]
+    C --> E[Recipient opens the link]
+    D --> E
+    E --> F([Their browser unlocks the note<br/>and the server deletes its copy])
 ```
 
 1. **You write a note.** Your browser generates a random 256-bit key and encrypts the note
