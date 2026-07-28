@@ -11,6 +11,7 @@ import { ApiError } from './client.js';
 import { cmdCreate } from './commands/create.js';
 import { cmdDelete } from './commands/delete.js';
 import { cmdGet } from './commands/get.js';
+import { cmdUpdate, cmdVersion } from './commands/update.js';
 import { AbortError, UsageError } from './errors.js';
 import { confirm, promptHidden, promptLine, promptMultiline } from './prompt.js';
 import { copyToClipboard } from './tui/clipboard.js';
@@ -33,6 +34,8 @@ Usage:
   binthere get <share-url | ->       fetch and decrypt a note ("-" reads the URL from stdin)
   binthere view <share-url | ->      alias for get
   binthere delete <share-url | id>   delete a note with its delete token
+  binthere update                    update the global npm installation
+  binthere version, -v               show the version and check for updates
 
 create flags:
   -t, --text <string>    use the given string as the note content
@@ -48,7 +51,6 @@ get flags:
   --password-env <VAR>   read the password from an environment variable
 delete flags:
   --token-env <VAR>      read the delete token from an environment variable
-
 Global:
   -s, --server <url>     API origin for create/delete (default $BINTHERE_SERVER
                          or ${DEFAULT_SERVER}); get takes it from the share URL
@@ -147,6 +149,9 @@ async function dispatch(argv, io) {
     case 'get':
     case 'view': return cmdGet(rest, io);
     case 'delete': return cmdDelete(rest, io);
+    case 'update': return cmdUpdate(rest, io);
+    case 'version': return cmdVersion(rest, io);
+    case '-v': return cmdVersion(rest, io);
     default: {
       // Default command is create when stdin is piped (`cat notes.md | binthere`)
       // or when the content is inline (`binthere -t "hi"` / `binthere -f notes.md`
@@ -160,7 +165,7 @@ async function dispatch(argv, io) {
       if (command === undefined) {
         return runWizard(io);
       }
-      throw new UsageError(`unknown command "${command}" (expected create, get/view, or delete)`);
+      throw new UsageError(`unknown command "${command}" (expected create, get/view, delete, update, or version)`);
     }
   }
 }

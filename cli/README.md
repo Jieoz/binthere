@@ -56,15 +56,16 @@ glyph by glyph, then pick an action with the arrow keys (or `1`–`3`) and confi
  binthere
 
      ✦
- ██▄ █ █▄ █ ▀█▀ █▄█ ██▀ █▀▄ ██▀
- █▄█ █ █ ▀█  █  █ █ █▄▄ █▀▄ █▄▄
+ █▀▄ █ █▄ █ ▀█▀ █ █ █▀▀ █▀▄ █▀▀
+ █▀▄ █ █ ▀█  █  █▀█ █▀  █▀▄ █▀
+ ▀▀  ▀ ▀  ▀  ▀  ▀ ▀ ▀▀▀ ▀ ▀ ▀▀▀
 
  Zero-knowledge encrypted notes.
  encrypted locally · one read · gone in 24 hours
 
  server  https://binthere.gaury.dev
 
- ╭───────────────────────────────────────────────────────────╮
+ ╭─ actions ─────────────────────────────────────────────────╮
  │ ❯ 1 Create a note   write, seal, and get a one-time link  │
  │   2 View a note     paste a share URL — reading burns it  │
  │   3 Delete a note   remove it early with the delete token │
@@ -148,13 +149,23 @@ The destructive read asks for confirmation on a TTY (`--yes` skips it).
 Deletes a paste using its delete token (prompted, or `--token-env <VAR>`). The token is sent
 only in the `X-Delete-Token` header, never in a URL.
 
+### `binthere update`
+
+Checks npm for the latest published CLI version and updates an installation created with
+`npm install -g binthere`. Repository checkouts and temporary `npx` copies are not modified—use
+`npm install -g binthere@latest` for those.
+
+### `binthere version` / `binthere -v`
+
+Prints the installed version and checks npm for a newer release without changing anything.
+
 ### Global
 
 | Flag / env | Meaning |
 | --- | --- |
 | `-s, --server <url>` | API origin for `create`/`delete` (default `$BINTHERE_SERVER`, then `https://binthere.gaury.dev`); `get` takes it from the share URL |
 | `$BINTHERE_NO_ANIMATION=1` | Disable non-essential TUI motion while retaining colors and interaction |
-| `--help`, `--version` | The usual |
+| `--help`, `--version` | Show help or print the installed version without a network check |
 
 HTTPS is enforced for every server except `localhost` / `127.0.0.1` (for `wrangler dev`).
 

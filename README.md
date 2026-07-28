@@ -148,7 +148,7 @@ A bare `binthere` opens an interactive full-screen menu; it also composes in pip
 (`git diff | npx binthere` prints a share URL on stdout). See
 [`cli/README.md`](./cli/README.md) for the full command reference, interactive-mode tour,
 and security notes. Set `BINTHERE_NO_ANIMATION=1` to keep the colored TUI while disabling
-non-essential motion.
+non-essential motion. Globally installed copies can update themselves with `binthere update`.
 
 ## Self-hosting
 

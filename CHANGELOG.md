@@ -24,6 +24,10 @@ versioned separately from the application (see [`SPEC.md`](./SPEC.md), currently
   each wizard page clears the viewport before drawing. `BINTHERE_NO_ANIMATION=1` disables
   non-essential motion without disabling colors or keyboard interaction. Result-screen
   shine stops after a terminal resize rather than repainting stale absolute coordinates.
+- **The CLI can update a global npm installation.** `binthere update` checks the published
+  version and installs `binthere@latest`; `binthere version` (or `binthere -v`) performs the
+  version check without changing the installation. Repository checkouts and temporary `npx`
+  copies are reported but not modified.
 - **The light/dark toggle now repaints the interface instead of snapping.** The flip runs inside a
   **View Transition**: the outgoing frame is held still and the new palette is unmasked over it
   along a soft diagonal, from the toggle in the top-right down to the bottom-left, over 520ms.
