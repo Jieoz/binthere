@@ -225,6 +225,29 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .back .arrow { transition: transform .2s ease; }
 .back:hover .arrow { transform: scale(1.12); }
 
+/* GitHub badge — the mark, a hairline divider, and the star count (stars.js
+   fills it from /api/stars). Metrics follow .back / .theme-toggle so the three
+   topbar controls read as one row. The star takes the accent hue: seal red is
+   destruction-only (DESIGN.md). */
+.gh { display: inline-flex; align-items: center; gap: .5rem; padding: .3rem .65rem; min-height: 32px;
+  color: var(--ink-2); background: transparent; border: 1px solid var(--rule-2); border-radius: 3px;
+  transition: color .14s ease, border-color .14s ease, background-color .14s ease; }
+.gh:hover { color: var(--ink); border-color: var(--rule-3); background: var(--sheet-2); }
+.gh:active { background: var(--sheet); }
+.gh-mark { width: 15px; height: 15px; flex: none; }
+/* The divider hangs off the count, so both leave together when there is no
+   number to show. */
+.gh-stars { display: inline-flex; align-items: center; gap: .3rem; }
+.gh-stars::before { content: ''; flex: none; width: 1px; height: 14px; margin-right: .2rem; background: var(--rule-2); }
+.gh-star { width: 11px; height: 11px; flex: none; color: var(--accent); }
+.gh-count { font-size: .72rem; font-weight: 500; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+/* Narrow screens: the mark alone carries the context, so drop the divider and
+   the star rather than the count. */
+@media (max-width: 480px) {
+  .gh { gap: .38rem; padding: .3rem .55rem; }
+  .gh-stars::before, .gh-star { display: none; }
+}
+
 .theme-toggle { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0;
   background: transparent; border: 1px solid var(--rule-2); border-radius: 3px; color: var(--ink-2); cursor: pointer;
   transition: color .14s ease, background-color .14s ease, border-color .14s ease; }
