@@ -10,6 +10,7 @@ import { validatePaste, FormatError, MAX_CT_B64 } from '../public/js/format.js';
 import { genId, parseId, genDeleteToken, hashToken, verifyToken } from './lib/ids.js';
 import { ttlSeconds, MAX_BODY, MAX_BURN_RECORD, kvExists, kvPut, kvGet, kvDelete, burnStub } from './lib/store.js';
 import { allowCreate } from './lib/ratelimit.js';
+import { fetchStars, STARS_TTL, STARS_ERROR_TTL } from './lib/stars.js';
 
 export { BurnPaste } from './burn-do.js';
 
@@ -38,6 +39,11 @@ export default {
     if (pathname === '/api/paste') {
       if (request.method === 'POST') return createPaste(request, env, ctx);
       return err('Method not allowed', 405, { allow: 'POST' });
+    }
+
+    if (pathname === '/api/stars') {
+      if (request.method === 'GET') return readStars();
+      return err('Method not allowed', 405, { allow: 'GET' });
     }
 
     const mc = pathname.match(/^\/api\/paste\/([^/]+)\/consume$/);
@@ -241,6 +247,18 @@ async function consumePaste(id, request, env) {
   const res = await burnStub(env, id).consume();
   if (res.status === 'ok') return json(res.paste, 200);
   return err('This document was single-use and has already been read, or has expired.', 410);
+}
+
+// The repository's star count for the topbar badge. Unlike every other route
+// this response is public, identical for all visitors, and cheap to be slightly
+// stale — so it is cached rather than no-store'd, which is also what keeps a
+// flood of page loads from turning into a flood of GitHub requests.
+async function readStars() {
+  const stars = await fetchStars();
+  if (stars === null) {
+    return err('Star count unavailable.', 502, { 'cache-control': `public, max-age=${STARS_ERROR_TTL}` });
+  }
+  return json({ stars }, 200, { 'cache-control': `public, max-age=${STARS_TTL}` });
 }
 
 async function deletePaste(id, request, env) {
