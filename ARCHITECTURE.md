@@ -17,13 +17,18 @@ one `wrangler.toml`) keeps the security-sensitive integration surface small.
   POST   /api/paste      │        └─ path /api/*     ─▶  src/index.js router                          │
   GET    /api/paste/:id  │                                 ├─ POST  create  ─▶ KV or BurnPaste DO     │
   DELETE /api/paste/:id  │                                 ├─ GET   read    ─▶ KV or BurnPaste DO     │
-                         │                                 └─ DELETE delete ─▶ KV or BurnPaste DO     │
+                         │                                 ├─ DELETE delete ─▶ KV or BurnPaste DO     │
+  GET    /api/stars      │                                 └─ GET   stars   ─▶ api.github.com (cached)│
                          └──────────────────────────────────────────────────────────────────────────┘
 ```
 
 - `_headers` (in `public/`) applies the strict CSP + security headers to every asset response.
 - `not_found_handling = "single-page-application"` makes `/p/<id>` serve `index.html`; the
   client reads the id from the path and the key from the `#fragment`.
+- `GET /api/stars` is the one route outside the paste path: it proxies the repository's public
+  star count for the topbar badge, since the page cannot reach `api.github.com` itself under
+  `connect-src 'self'`. The answer is the same for every visitor, says nothing about them, and
+  is cached at the edge and in the browser (30 min) so page loads don't become GitHub requests.
 
 ## Zero-knowledge boundary
 

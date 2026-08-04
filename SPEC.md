@@ -311,6 +311,11 @@ trigger it — and never releases content (`DELETE` returns no paste body).
 | `POST /api/paste/:id/consume` | `X-Burn-Intent: consume` header (burn ids only) | `200` + paste | `400` missing header · `403` cross-site · `404` malformed/non-burn id · `410` burned/expired |
 | `DELETE /api/paste/:id`  | `X-Delete-Token: <deleteToken>` header | `200`    | `400` missing token · `403` wrong token · `404` missing |
 
+The site also serves `GET /api/stars`, which answers `{ "stars": <integer> }` from a cached
+proxy of the repository's public GitHub star count (`502` when GitHub is unavailable). It exists
+for the topbar badge, touches no paste state, and is **not part of this protocol** — a
+conforming client never calls it.
+
 `POST /api/paste` requires `Content-Type: application/json` (parameters such as `charset`
 are allowed); anything else is a `415`. This forces a CORS preflight for cross-origin browser
 requests — since the API sends no CORS headers, a hostile page cannot create pastes from a

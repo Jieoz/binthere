@@ -6,6 +6,18 @@ versioned separately from the application (see [`SPEC.md`](./SPEC.md), currently
 
 ## [Unreleased]
 
+### Added
+
+- **GitHub star badge in the topbar** — the mark, a hairline divider, a star and the live
+  count, linking to the repository. The count comes from `GET /api/stars`, a new Worker route
+  that proxies GitHub's public repo endpoint: `connect-src 'self'` rules out calling
+  `api.github.com` from the page, and the proxy is edge-cached (30 min, 60s on failure) so a
+  burst of visitors costs GitHub one request per colo rather than one per page load. It is the
+  only route that is cached instead of `no-store`, carries nothing visitor-specific, and is not
+  part of the paste protocol (SPEC §10). Failures degrade to a plain repository link; the last
+  count is kept in `localStorage` so a repeat visit paints the badge with the rest of the
+  topbar instead of widening it mid-read.
+
 ### Security
 
 - **Oversized uploads are rejected incrementally, not after buffering.** `POST /api/paste`

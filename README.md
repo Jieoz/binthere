@@ -223,6 +223,7 @@ the key fragment never appears in any request. Full details in [`SPEC.md`](./SPE
 | `GET /api/paste/:id` | Fetch a paste (consumes a burn) | `200` | `404` missing/expired · `410` burned |
 | `GET /api/paste/:id?meta=1` | Peek a burn head without consuming | `200` | `404` missing · `410` burned/expired |
 | `DELETE /api/paste/:id` | Delete, with `X-Delete-Token` header | `200` | `400` missing token · `403` wrong token · `404` missing |
+| `GET /api/stars` | Repo star count for the topbar badge (not part of the paste protocol) | `200` | `502` GitHub unavailable |
 
 The delete token travels in a header — never in the URL — so it cannot land in request logs;
 the server stores and compares only its SHA-256.
@@ -239,7 +240,7 @@ public/            static frontend (CSP-clean; served by Workers Static Assets)
 src/
   index.js         Worker: /api/paste routing + asset fallback
   burn-do.js       BurnPaste Durable Object (atomic burn-after-read)
-  lib/             ids, storage routing, rate-limit wrapper
+  lib/             ids, storage routing, rate-limit wrapper, GitHub star proxy
 test/              vitest suites (run in workerd) + genvectors.mjs (vector regenerator)
                    + vectors.expected.txt (pinned vector output, diffed in CI)
 tools/             verify-vectors.py — independent Python cross-check of the frozen vectors
