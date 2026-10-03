@@ -26,6 +26,9 @@ Desktop.ini
 *.swo
 *~
 
+# Node server runtime data (ciphertext store)
+data/
+
 # Internal / working docs — kept locally, not part of the public repo.
 CLAUDE.md
 AGENTS.md
