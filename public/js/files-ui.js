@@ -32,9 +32,10 @@ async function j(res, what) {
 
 /**
  * Encrypt + upload a File. onProgress(done, total) fires after each chunk.
+ * opts.expire: '1hour' | '1day' | '1week' (default '1day').
  * Returns { id, deletetoken, fragment } — fragment is the share secret (#…).
  */
-export async function uploadFile(file, { onProgress } = {}) {
+export async function uploadFile(file, { onProgress, expire = '1day' } = {}) {
   if (file.size > MAX_FILE) {
     throw new Error(`文件过大（上限 ${Math.floor(MAX_FILE / 1024 / 1024)} MiB）。`);
   }
@@ -71,7 +72,7 @@ export async function uploadFile(file, { onProgress } = {}) {
   // encrypted with the same AAD that will authenticate it on read.
   const body = {
     v: 1, ct: b64urlFromBytes(ct), wk: b64urlFromBytes(wk),
-    adata, meta: { expire: '1day' },
+    adata, meta: { expire },
   };
   const created = await j(await fetch(api('/file'), {
     method: 'POST', headers: { 'content-type': 'application/json' },

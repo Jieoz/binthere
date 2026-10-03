@@ -107,7 +107,8 @@ function initCreate() {
     const setLabel = (t) => { if (sendTxt) sendTxt.textContent = t; };
     setLabel('加密中……');
     try {
-      const { id, fragment } = await uploadFile(file, {
+      const { id, fragment, deletetoken } = await uploadFile(file, {
+        expire: $('#expire-select').value,
         onProgress: (done, total) => setLabel(`上传中 ${done}/${total}…`),
       });
       const url = `${location.origin}${btUrl('/p/')}${id}#${fragment}`;
@@ -115,7 +116,7 @@ function initCreate() {
       paintFile();
       $('#editor').value = '';
       await leaveCreateView();
-      showSuccess({ url, isFile: true });
+      showSuccess({ id, deletetoken, url, isFile: true });
     } catch (e) {
       showMsg(msg, friendlyError(e));
       createBtn.disabled = false;
@@ -150,7 +151,7 @@ function initCreate() {
         password,
         fmt,
         bar: true,
-        expire: '1day',
+        expire: $('#expire-select').value,
       });
       const { id, deletetoken } = await createPaste(body);
       const url = `${location.origin}${btUrl('/p/')}${id}#${fragment}`;
@@ -267,17 +268,47 @@ function openPasswordModal(onSubmit) {
   $('#pw-modal-dialog').focus();
 }
 
+// Poll the non-secret head while the sender is on the success screen so the
+// "downloaded N times" line appears the moment the receiver pulls chunk 0.
+// 15s cadence: this is a reassurance signal, not a live feed. 404 → the paste
+// is gone (expired or deleted) → show its final state and stop.
+let dlTimer = null;
+function watchDownloads(id) {
+  if (dlTimer !== null) { clearInterval(dlTimer); dlTimer = null; }
+  const el = $('#dl-status');
+  const paint = (dl) => {
+    el.hidden = false;
+    el.textContent = dl && dl.count > 0
+      ? `📥 已被下载 ${dl.count} 次`
+      : '📥 还没有人下载';
+  };
+  const tick = async () => {
+    try {
+      const head = await fetchPasteMeta(id);
+      paint(head.dl);
+    } catch {
+      if (dlTimer !== null) { clearInterval(dlTimer); dlTimer = null; }
+      el.hidden = false;
+      el.textContent = '📥 链接已失效（到期或已删除）';
+    }
+  };
+  tick();
+  dlTimer = setInterval(tick, 15000);
+}
+
 function showSuccess({ id, deletetoken, url, isBurn, isFile }) {
   showView('success');
   $('#paste-url').textContent = url;
   if (isFile) {
     $('#success-note').textContent =
-      '文件已加密上传。任何持有此链接的人都可下载一次（可重复打开直到 24 小时后自动销毁）。';
+      '文件已加密上传。任何持有此链接的人都可下载（可重复打开直到到期自动销毁）。';
   } else if (isBurn) {
     $('#success-note').textContent =
       '任何持有此链接的人都只能阅读一次。';
   }
   renderQr(url);
+  if (isFile && id) watchDownloads(id);
+  else $('#dl-status').hidden = true;
 
   $('#copy-url').onclick = async () => {
     flashCopied($('#copy-url'), (await copyText(url)) ? '已复制' : '复制失败');

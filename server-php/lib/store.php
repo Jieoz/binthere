@@ -43,6 +43,13 @@ function store_put_meta(string $dataDir, string $id, array $rec) {
     rename($tmp, $final);
 }
 
+/** Atomically overwrite an EXISTING meta record (download counter, …). */
+function store_update_meta(string $dataDir, string $id, array $rec) {
+    $tmp = "{$dataDir}/tmp/" . bin2hex(random_bytes(8)) . '.json';
+    file_put_contents($tmp, json_encode($rec, JSON_UNESCAPED_SLASHES), LOCK_EX);
+    rename($tmp, store_meta_path($dataDir, $id));
+}
+
 /** Allocate a fresh id of $cls (retries on the astronomically rare collision). */
 function store_alloc_id(string $dataDir, string $cls): string {
     for ($i = 0; $i < 4; $i++) {

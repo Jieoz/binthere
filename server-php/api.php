@@ -117,8 +117,11 @@ function store_paste(array $clean, string $cls, string $dataDir) {
 
 const GONE_MSG = '内容不存在、已过期或已被删除。';
 
-function head_of(array $p): array {
-    return ['v' => $p['v'], 'wk' => $p['wk'], 'adata' => $p['adata'], 'meta' => $p['meta']];
+function head_of(array $p, array $rec = null): array {
+    $head = ['v' => $p['v'], 'wk' => $p['wk'], 'adata' => $p['adata'], 'meta' => $p['meta']];
+    // Sender-side download counter (file pastes only; null until first download).
+    if ($rec !== null && isset($rec['dl'])) $head['dl'] = ['count' => $rec['dl'], 'at' => $rec['dlat'] ?? 0];
+    return $head;
 }
 
 function read_paste(string $id, bool $peekOnly, string $dataDir) {
@@ -137,7 +140,7 @@ function read_paste(string $id, bool $peekOnly, string $dataDir) {
     $rec = store_get_meta($dataDir, $id);
     if ($rec === null) json_error(404, GONE_MSG);
     if ($peekOnly) {
-        json_out(head_of($rec['p']), 200);
+        json_out(head_of($rec['p'], $rec), 200);
     }
     json_out($rec['p'], 200);
 }

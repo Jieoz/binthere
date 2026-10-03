@@ -47,6 +47,7 @@ function route_file(string $method, string $path, string $dataDir): bool {
     if ($method === 'GET') {
         if (!isset($m[2])) json_error(405, '不支持的请求方法。', ['Allow' => 'PUT /api/file/<id>/<n>, GET /api/file/<id>/<n>']);
         get_chunk($id, (int)$m[2], $dataDir);
+        bt_count_download($dataDir, $id, (int)$m[2]); // after serve: counter never blocks the stream
         return true;
     }
     // DELETE /api/file/<id> — whole-paste delete, same token contract as text.
@@ -152,4 +153,26 @@ function read_capped_body(int $cap) {
     }
     fclose($fh);
     return $buf;
+}
+
+/**
+ * Download-session counter for the sender's visibility UI. Chunk 0 is the
+ * manifest gate — every full download fetches it exactly once, so a GET on
+ * chunk 0 marks one download "session". Retries within BT_DL_WINDOW seconds
+ * (mid-download network blips, parallel range re-fetches) collapse into the
+ * same session. The counter lives in the meta record (`dl`, `dlat`); it never
+ * gates access and never alters the zero-knowledge wire format.
+ */
+const BT_DL_WINDOW = 120;
+
+function bt_count_download(string $dataDir, string $id, int $n): void {
+    if ($n !== 0) return;
+    $rec = store_get_meta($dataDir, $id);
+    if ($rec === null) return;
+    $now = time();
+    $last = $rec['dlat'] ?? 0;
+    $rec['dlat'] = $now;
+    if ($now - $last <= BT_DL_WINDOW && isset($rec['dl'])) return; // same session
+    $rec['dl'] = ($rec['dl'] ?? 0) + 1;
+    store_update_meta($dataDir, $id, $rec);
 }

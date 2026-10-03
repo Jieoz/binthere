@@ -293,6 +293,9 @@ html.dark .theme-toggle .ico-moon { display: block; }
 .file-row { display: flex; align-items: center; gap: .6rem; padding: .55rem .9rem; margin: 0 .9rem;
   border-top: 1px solid var(--rule); font-size: .84rem; color: var(--ink-2); flex-wrap: wrap; }
 .file-chip { font-family: var(--mono); font-size: .78rem; word-break: break-all; }
+.expire-select { background: var(--sheet); border: 1px solid var(--rule-2); border-radius: 3px;
+  padding: .45rem .5rem; color: var(--ink); font-family: inherit; font-size: .8rem; cursor: pointer; }
+.expire-select:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ring); }
 
 /* ── inputs ──────────────────────────────────────────────────────────────── */
 .input { background: var(--sheet); border: 1px solid var(--rule-2); border-radius: 3px; padding: .5rem .7rem;

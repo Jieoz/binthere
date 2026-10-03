@@ -197,6 +197,11 @@
 
                     <div class="editor-bar">
                         <div class="editor-bar-left">
+                            <select id="expire-select" class="expire-select" aria-label="有效期">
+                                <option value="1hour">1 小时后销毁</option>
+                                <option value="1day" selected>1 天后销毁</option>
+                                <option value="1week">1 周后销毁</option>
+                            </select>
                             <button
                                 type="button"
                                 class="lock"
@@ -459,6 +464,7 @@
                         把它发给唯一该读的人——一经打开即刻销毁。解锁密钥就在链接本身之中，
                         请对整个链接保密，也不要回传给我们。
                     </p>
+                    <p class="subtitle" id="dl-status" hidden aria-live="polite"></p>
                 </div>
                 <div class="stack reveal d2">
                     <p class="msg" id="file-dl" role="status" hidden></p>
