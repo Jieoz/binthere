@@ -31,21 +31,21 @@ function bt_max_chunks(): int {
  */
 function route_file(string $method, string $path, string $dataDir): bool {
     if (!preg_match('#^([^/]+)(?:/(\d+))?$#', $path, $m)) {
-        json_error(404, 'Document does not exist, has expired or has been deleted.');
+        json_error(404, '内容不存在、已过期或已被删除。');
     }
     $id = urldecode($m[1]);
     $info = parse_id($id);
     if ($info === null || !$info['file']) {
-        json_error(404, 'Document does not exist, has expired or has been deleted.');
+        json_error(404, '内容不存在、已过期或已被删除。');
     }
 
     if ($method === 'PUT') {
-        if (!isset($m[2])) json_error(405, 'Method not allowed.', ['Allow' => 'PUT /api/file/<id>/<n>, GET /api/file/<id>/<n>']);
+        if (!isset($m[2])) json_error(405, '不支持的请求方法。', ['Allow' => 'PUT /api/file/<id>/<n>, GET /api/file/<id>/<n>']);
         put_chunk($method, $id, (int)$m[2], $dataDir);
         return true;
     }
     if ($method === 'GET') {
-        if (!isset($m[2])) json_error(405, 'Method not allowed.', ['Allow' => 'PUT /api/file/<id>/<n>, GET /api/file/<id>/<n>']);
+        if (!isset($m[2])) json_error(405, '不支持的请求方法。', ['Allow' => 'PUT /api/file/<id>/<n>, GET /api/file/<id>/<n>']);
         get_chunk($id, (int)$m[2], $dataDir);
         return true;
     }
@@ -54,7 +54,7 @@ function route_file(string $method, string $path, string $dataDir): bool {
         delete_paste($id, $dataDir); // in api.php; exits
         return true;
     }
-    json_error(405, 'Method not allowed.', ['Allow' => 'PUT, GET, DELETE']);
+    json_error(405, '不支持的请求方法。', ['Allow' => 'PUT, GET, DELETE']);
 }
 
 /** PUT one ciphertext chunk. Idempotent: re-uploading the identical index is
@@ -63,22 +63,22 @@ function route_file(string $method, string $path, string $dataDir): bool {
  *  router for large bodies, which surfaced as spurious 409s). */
 function put_chunk(string $method, string $id, int $n, string $dataDir) {
     if (!rl_take('put', client_ip(), BT_RL_PUT)) {
-        json_error(429, 'Rate limit exceeded. Try again shortly.');
+        json_error(429, '请求过于频繁，请稍后再试。');
     }
     if ($n < 0 || $n >= bt_max_chunks()) {
-        json_error(400, 'Chunk index out of range (0–' . (bt_max_chunks() - 1) . ').');
+        json_error(400, '分块序号超出范围（0–' . (bt_max_chunks() - 1) . '）。');
     }
     $rec = store_get_meta($dataDir, $id);
     if ($rec === null) {
-        json_error(404, 'Document does not exist, has expired or has been deleted.');
+        json_error(404, '内容不存在、已过期或已被删除。');
     }
     if ($rec['exp'] > 0 && $rec['exp'] <= time()) {
         store_delete($dataDir, $id);
-        json_error(404, 'Document does not exist, has expired or has been deleted.');
+        json_error(404, '内容不存在、已过期或已被删除。');
     }
     $presented = $_SERVER['HTTP_X_DELETE_TOKEN'] ?? null;
     if (!verify_token($presented, $rec['dth'])) {
-        json_error(403, 'Wrong deletion token. Chunk was not accepted.');
+        json_error(403, '删除令牌错误，分块未被接受。');
     }
 
     // Idempotency: if the chunk is already on disk, accept the request as
@@ -93,10 +93,10 @@ function put_chunk(string $method, string $id, int $n, string $dataDir) {
     }
     $body = read_capped_body($cap);
     if ($body === null) {
-        json_error(413, 'Chunk is too large.');
+        json_error(413, '分块过大。');
     }
     if (strlen($body) === 0) {
-        json_error(400, 'Chunk body is empty.');
+        json_error(400, '分块内容为空。');
     }
     if (!store_put_chunk($dataDir, $id, $n, $body)) {
         // Raced with a concurrent identical PUT — the bytes are there, accept.
@@ -116,7 +116,7 @@ function get_chunk(string $id, int $n, string $dataDir) {
     $file = store_blob_dir($dataDir, $id) . "/{$n}";
     clearstatcache(true, $file);
     if (!is_file($file)) {
-        json_error(404, 'Chunk not found.');
+        json_error(404, '分块不存在。');
     }
     header('Content-Type: application/octet-stream');
     if (getenv('BT_SELF_STREAM')) {

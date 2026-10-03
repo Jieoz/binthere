@@ -62,23 +62,23 @@ function read_and_validate_paste(): array {
         json_error(415, 'Content-Type must be application/json.');
     }
     if (!rl_take('create', client_ip(), BT_RL_CREATE)) {
-        json_error(429, 'Rate limit exceeded. Try again shortly.');
+        json_error(429, '请求过于频繁，请稍后再试。');
     }
 
     // Body cap: the largest legal ct (b64) + wk + adata + slack.
     $cap = MAX_CT_B64 + 4096;
     if (isset($_SERVER['CONTENT_LENGTH']) && (int)$_SERVER['CONTENT_LENGTH'] > $cap) {
-        json_error(413, 'Document is too large.');
+        json_error(413, '内容过大。');
     }
     $raw = read_capped_body($cap);
-    if ($raw === null) json_error(413, 'Document is too large.');
+    if ($raw === null) json_error(413, '内容过大。');
 
     $parsed = json_decode($raw, true);
-    if (!is_array($parsed)) json_error(400, 'Invalid JSON body.');
+    if (!is_array($parsed)) json_error(400, '请求体不是有效的 JSON。');
     // Mirror the JS pre-check so an oversized ct reports a clean 413 (a PHP
     // warning on string offsets would otherwise 500).
     if (isset($parsed['ct']) && is_string($parsed['ct']) && strlen($parsed['ct']) > MAX_CT_B64) {
-        json_error(413, 'Document is too large.');
+        json_error(413, '内容过大。');
     }
     // JSON objects decode to PHP arrays; reject list-shaped bodies early.
     if (count($parsed) > 0 && array_keys($parsed) === range(0, count($parsed) - 1)) {
@@ -115,7 +115,7 @@ function store_paste(array $clean, string $cls, string $dataDir) {
 
 // ── read / consume / delete ──────────────────────────────────────────────────
 
-const GONE_MSG = 'Document does not exist, has expired or has been deleted.';
+const GONE_MSG = '内容不存在、已过期或已被删除。';
 
 function head_of(array $p): array {
     return ['v' => $p['v'], 'wk' => $p['wk'], 'adata' => $p['adata'], 'meta' => $p['meta']];
@@ -163,7 +163,7 @@ function consume_paste(string $id, string $dataDir) {
 
 function delete_paste(string $id, string $dataDir) {
     $token = $_SERVER['HTTP_X_DELETE_TOKEN'] ?? null;
-    if (!$token) json_error(400, 'Missing deletion token.');
+    if (!$token) json_error(400, '缺少删除令牌。');
     $info = parse_id($id);
     if ($info === null) json_error(404, GONE_MSG);
 
@@ -203,7 +203,7 @@ function main() {
     if (random_int(0, 299) === 0) store_sweep_expired($dataDir);
 
     if ($path === '/paste' || $path === '/file') {
-        if ($method !== 'POST') json_error(405, 'Method not allowed.', ['Allow' => 'POST']);
+        if ($method !== 'POST') json_error(405, '不支持的请求方法。', ['Allow' => 'POST']);
         $clean = read_and_validate_paste();
         store_paste($clean, $path === '/file' ? CLASS_FILE
             : (($clean['adata']['bar'] ?? false) ? CLASS_BURN : CLASS_KV), $dataDir);
@@ -215,7 +215,7 @@ function main() {
     }
 
     if (preg_match('#^/paste/([^/]+)/consume$#', $path, $m)) {
-        if ($method !== 'POST') json_error(405, 'Method not allowed.', ['Allow' => 'POST']);
+        if ($method !== 'POST') json_error(405, '不支持的请求方法。', ['Allow' => 'POST']);
         consume_paste(urldecode($m[1]), $dataDir);
     }
 
@@ -227,14 +227,14 @@ function main() {
         $id = urldecode($m[2]);
         if ($method === 'GET') read_paste($id, isset($_GET['meta']) && $_GET['meta'] === '1', $dataDir);
         if ($method === 'DELETE') delete_paste($id, $dataDir);
-        json_error(405, 'Method not allowed.', ['Allow' => 'GET, DELETE']);
+        json_error(405, '不支持的请求方法。', ['Allow' => 'GET, DELETE']);
     }
 
     if (preg_match('#^/file/[^/]+/\d+$#', $path)) {
         route_file($method, substr($path, 6), $dataDir); // exits
     }
 
-    json_error(404, 'Not found');
+    json_error(404, '未找到');
 }
 
 main();

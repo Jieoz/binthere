@@ -26,7 +26,7 @@ if (route) {
   // would leave every view hidden — a blank page). Show a proper error instead.
   try { id = decodeURIComponent(route[1]); } catch { /* fall through */ }
   if (id !== null) initView(id);
-  else status('This link is malformed — check that it was copied completely.', true);
+  else status('链接格式不完整——请检查是否已完整复制。', true);
 } else {
   initCreate();
 }
@@ -55,7 +55,7 @@ function initCreate() {
 
   const requestCreate = () => {
     if (createBtn.disabled) return;
-    if (!$('#editor').value.trim()) { showMsg(msg, 'Type something first.'); $('#editor').focus(); return; }
+    if (!$('#editor').value.trim()) { showMsg(msg, '先写点内容。'); $('#editor').focus(); return; }
     msg.hidden = true;
     if (pwRequired) openPasswordModal((password) => submitPaste(password));
     else submitPaste('');
@@ -82,9 +82,9 @@ function initCreate() {
       createBtn.classList.add('sending');
       // The label waits for the arrow to clear — swapping it mid-flight resizes
       // the button and jogs the icon the eye is following.
-      relabel = setTimeout(() => { if (sendTxt) sendTxt.textContent = 'Encrypting…'; }, ARROW_LEAD_MS);
+      relabel = setTimeout(() => { if (sendTxt) sendTxt.textContent = '加密中……'; }, ARROW_LEAD_MS);
     } else if (sendTxt) {
-      sendTxt.textContent = 'Encrypting…';
+      sendTxt.textContent = '加密中……';
     }
     const arrowGone = animate ? wait(ARROW_LEAD_MS) : null;
     try {
@@ -174,18 +174,18 @@ function openPasswordModal(onSubmit) {
     }
   };
   const submit = () => {
-    if (!input.value) { showMsg(mmsg, 'Enter a password, or cancel.'); input.focus(); return; }
+    if (!input.value) { showMsg(mmsg, '请输入密码，或取消。'); input.focus(); return; }
     // Practical cap, enforced VISIBLY — never via maxlength, whose silent
     // truncation could seal the note with a password the reader doesn't have.
     if (input.value.length > 128) {
-      showMsg(mmsg, 'Password is too long — 128 characters max.');
+      showMsg(mmsg, '密码过长——最多 128 个字符。');
       input.focus();
       return;
     }
     // A mistyped password permanently locks a one-time note (there is no safe
     // way to test it afterwards — opening the link consumes the note).
     if (input.value !== confirmInput.value) {
-      showMsg(mmsg, 'Passwords do not match — repeat the same password in both fields.');
+      showMsg(mmsg, '两次输入不一致——请在两个字段中输入相同的密码。');
       confirmInput.focus();
       return;
     }
@@ -215,29 +215,29 @@ function showSuccess({ id, deletetoken, url, isBurn }) {
   $('#paste-url').textContent = url;
   if (isBurn) {
     $('#success-note').textContent =
-      'Anyone with this link can read the note once.';
+      '任何持有此链接的人都只能阅读一次。';
   }
   renderQr(url);
 
   $('#copy-url').onclick = async () => {
-    flashCopied($('#copy-url'), (await copyText(url)) ? 'copied' : 'failed');
+    flashCopied($('#copy-url'), (await copyText(url)) ? '已复制' : '复制失败');
   };
   // Both irreversible actions are two-step: opening a one-time link consumes it,
   // and delete is permanent. A stray click must not kill a note about to be shared.
-  armConfirm($('#open-link'), 'Uses the one view — open?', () => { location.href = url; });
+  armConfirm($('#open-link'), '打开将消耗唯一一次阅读——确定？', () => { location.href = url; });
   $('#another').onclick = () => { location.href = btUrl('/'); };
 
   const delBtn = $('#delete-btn');
   const sMsg = $('#success-msg');
   const delLabel = delBtn.textContent;
-  armConfirm(delBtn, 'Permanently delete?', async () => {
+  armConfirm(delBtn, '永久删除？', async () => {
     delBtn.disabled = true;
-    delBtn.textContent = 'Deleting…';
+    delBtn.textContent = '删除中……';
     try {
       await deletePaste(id, deletetoken);
-      showMsg(sMsg, 'This paste has been deleted.');
-      toast('deleted');
-      delBtn.textContent = 'Deleted';
+      showMsg(sMsg, '该内容已删除。');
+      toast('已删除');
+      delBtn.textContent = '已删除';
       // The link is dead now — don't leave live-looking actions pointing at it.
       $('#open-link').disabled = true;
       $('#copy-url').disabled = true;
@@ -294,21 +294,21 @@ function initView(id) {
   if (newlink) newlink.hidden = false;
 
   const fragment = location.hash.slice(1);
-  if (!fragment) { status('This link is missing its decryption key.', true); return; }
+  if (!fragment) { status('链接缺少解密密钥。', true); return; }
   if (id[0] === 'b') initBurnView(id, fragment);
   else initNormalView(id, fragment);
 }
 
 // Normal (KV) paste: reads are idempotent, so fetch and decrypt directly.
 async function initNormalView(id, fragment) {
-  status('decrypting…');
+  status('解密中……');
   let paste;
   try { paste = await fetchPaste(id); } catch (e) { return handleReadError(e); }
   try {
     renderPaste(paste, await decryptPaste({ paste, fragment }));
   } catch (e) {
     if (e instanceof PasswordRequired) return promptPasswordNormal(paste, fragment);
-    status('Could not decrypt this note. The link may be corrupted or altered.', true);
+    status('无法解密该内容。链接可能已损坏或被改动。', true);
   }
 }
 
@@ -316,7 +316,7 @@ async function initNormalView(id, fragment) {
 // consuming, so a password can be verified before the single destructive read.
 // The paste is only consumed once we actually reveal it.
 async function initBurnView(id, fragment) {
-  status('checking…');
+  status('校验中……');
   let head;
   try { head = await fetchPasteMeta(id); } catch (e) { return handleReadError(e); }
   try {
@@ -325,7 +325,7 @@ async function initBurnView(id, fragment) {
     // clamped) or feed malformed fields into the crypto path.
     head = validateHead(head);
   } catch {
-    return status('Could not read this note — the server response was malformed.', true);
+    return status('无法读取该内容——服务器响应格式异常。', true);
   }
 
   if (head.adata.kdf === 'pbkdf2-hkdf') {
@@ -333,7 +333,7 @@ async function initBurnView(id, fragment) {
     promptPasswordBurn(id, fragment, head);
   } else {
     // No password: an explicit "reveal" click is the consent to burn it.
-    status('This note can only be viewed once.', false, { reveal: true });
+    status('该内容仅可查看一次。', false, { reveal: true });
     const revealBtn = $('#reveal-burn');
     revealBtn.disabled = false;
     // When the countdown hits zero the note is gone server-side — leaving an
@@ -341,7 +341,7 @@ async function initBurnView(id, fragment) {
     // expired state immediately (status() also stops and hides the timer).
     startExpiryTimer(head.meta, () => {
       revealBtn.disabled = true;
-      status('This note has expired — it can no longer be opened.', true);
+      status('该内容已过期，无法再打开。', true);
     });
     revealBtn.onclick = async () => {
       revealBtn.disabled = true;
@@ -352,7 +352,7 @@ async function initBurnView(id, fragment) {
       try {
         cek = await deriveContentKey({ adata: head.adata, wk: head.wk, fragment });
       } catch {
-        return status('Could not decrypt this note — the link may be incomplete or corrupted. The note was not opened and still exists.', true);
+        return status('无法解密该内容——链接可能不完整或已损坏。内容未开启且仍然保留。', true);
       }
       consumeBurn(id, head, cek);
     };
@@ -370,7 +370,7 @@ function bytesEqual(a, b) {
 // unwrapped content key from that verification — reused here so the password is
 // never stretched (PBKDF2) twice and the consumed read cannot "fail late".
 async function consumeBurn(id, head, cek) {
-  status('decrypting…');
+  status('解密中……');
   let paste;
   try { paste = await consumePaste(id); } catch (e) { return handleReadError(e); }
   try {
@@ -387,7 +387,7 @@ async function consumeBurn(id, head, cek) {
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     renderPaste(paste, result);
   } catch {
-    status('Could not decrypt this note. The link may be corrupted or altered.', true);
+    status('无法解密该内容。链接可能已损坏或被改动。', true);
   }
 }
 
@@ -416,8 +416,8 @@ function wirePasswordScreen(isBurn, verify) {
   const sub = $('#password-subtitle');
   if (sub) {
     sub.textContent = isBurn
-      ? 'This single-use note is password-protected. It is destroyed only once the correct password unlocks it.'
-      : 'This note is protected by a password in addition to the key in the link.';
+      ? '这条一次性内容受密码保护。只有输入正确密码才会打开并销毁。'
+      : '这条内容除链接中的密钥外，还设有密码保护。';
   }
   const input = $('#decrypt-password');
   const btn = $('#decrypt-btn');
@@ -436,9 +436,9 @@ function wirePasswordScreen(isBurn, verify) {
     msg.hidden = true;
     btn.disabled = true;
     // Password key derivation (PBKDF2) takes real time — say so, like the
-    // create button's "Encrypting…".
+    // create button 的「加密中……」。
     const label = btn.textContent;
-    btn.textContent = 'Decrypting…';
+    btn.textContent = '解密中……';
     try {
       await verify(input.value);
       input.value = ''; // verified — don't leave the password in the hidden DOM
@@ -446,8 +446,8 @@ function wirePasswordScreen(isBurn, verify) {
       // A GCM auth failure cannot distinguish a wrong password from a
       // corrupted/tampered link, so the message covers both honestly.
       showMsg(msg, e instanceof PasswordRequired
-        ? 'Please enter a password.'
-        : 'Wrong password — try again. If you are sure it is correct, the link may be corrupted or altered.');
+        ? '请输入密码。'
+        : '密码错误——请重试。如果确认无误，则链接可能已损坏或被改动。');
       inFlight = false;
       btn.disabled = false;
       btn.textContent = label;
@@ -463,11 +463,11 @@ function handleReadError(e) {
   // same as "gone" — telling a burn-note reader their note was consumed when
   // they are merely offline would be needlessly alarming.
   if (!(e instanceof ApiError)) {
-    status('Could not reach the server — check your connection and try again.', true);
+    status('无法连接服务器——请检查网络后重试。', true);
   } else if (e.status === 410) {
-    status('This paste has expired or was already opened.', true);
+    status('该内容已过期或已被阅读。', true);
   } else {
-    status('This paste has expired, was already opened, or never existed.', true);
+    status('该内容已过期、已被阅读，或从未存在。', true);
   }
 }
 
@@ -486,7 +486,7 @@ function renderPaste(paste, result) {
   pills.textContent = '';
   if (isMarkdown) pills.appendChild(pill('markdown'));
   else if (isCode) pills.appendChild(pill('code'));
-  if (result.bar) pills.appendChild(pill('one-time view · now deleted', 'bad'));
+  if (result.bar) pills.appendChild(pill('一次性查看 · 已删除', 'bad'));
 
   // Content (DOM construction only).
   const container = $('#paste-content');
@@ -496,11 +496,11 @@ function renderPaste(paste, result) {
 
   const rawBtn = $('#toggle-raw');
   rawBtn.hidden = !isMarkdown;
-  rawBtn.textContent = 'Raw';
-  rawBtn.onclick = () => { showRaw = !showRaw; rawBtn.textContent = showRaw ? 'Rendered' : 'Raw'; draw(); };
+  rawBtn.textContent = '原文';
+  rawBtn.onclick = () => { showRaw = !showRaw; rawBtn.textContent = showRaw ? '渲染' : '原文'; draw(); };
 
   $('#copy-content').onclick = async () => {
-    toast((await copyText(result.text)) ? 'copied to clipboard' : 'copy failed');
+    toast((await copyText(result.text)) ? '已复制到剪贴板' : '复制失败');
   };
 }
 
@@ -560,7 +560,7 @@ function wirePeek(...pairs) {
     for (const { input, btn } of fields) {
       input.type = show ? 'text' : 'password';
       btn.classList.toggle('revealed', show);
-      btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      btn.setAttribute('aria-label', show ? '隐藏密码' : '显示密码');
       btn.setAttribute('aria-pressed', String(show));
     }
   };
@@ -641,7 +641,7 @@ function startExpiryTimer(meta, onExpire) {
 // ms → H:MM:SS (or MM:SS under an hour). Clamps at 0 (shows "expired").
 function formatDuration(ms) {
   const total = Math.floor(ms / 1000);
-  if (total <= 0) return 'expired';
+  if (total <= 0) return '已过期';
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
@@ -656,10 +656,10 @@ function showMsg(el, message) {
 
 function friendlyError(e) {
   if (e instanceof ApiError) {
-    if (e.status === 429) return 'Too many pastes from your network — please wait a moment.';
-    if (e.status === 413) return 'That document is too large.';
-    return e.message || 'Server error. Please try again.';
+    if (e.status === 429) return '来自你所在网络的请求过于频繁——请稍候再试。';
+    if (e.status === 413) return '内容过大。';
+    return '服务器错误，请重试。';
   }
-  if (e && /too large/.test(e.message || '')) return 'That document is too large (1 MiB max).';
-  return 'Something went wrong. Please try again.';
+  if (e && /too large/.test(e.message || '')) return '内容过大（上限 1 MiB）。';
+  return '出错了，请重试。';
 }

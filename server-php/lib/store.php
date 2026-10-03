@@ -12,7 +12,7 @@ const BT_RL_PUT = 60;     // chunk PUTs per IP per minute
 function store_init(string $dataDir): string {
     foreach (["$dataDir/meta", "$dataDir/blob", "$dataDir/tmp"] as $d) {
         if (!is_dir($d) && !mkdir($d, 0700, true) && !is_dir($d)) {
-            http_error(500, 'Storage is not writable.');
+            http_error(500, '存储不可写。');
         }
     }
     return $dataDir;
@@ -49,7 +49,7 @@ function store_alloc_id(string $dataDir, string $cls): string {
         $id = gen_id($cls);
         if (!file_exists(store_meta_path($dataDir, $id))) return $id;
     }
-    http_error(500, 'Could not allocate a paste id, please retry.');
+    http_error(500, '无法分配内容 ID，请重试。');
 }
 
 /** Delete a paste: unlink meta, then its blob dir if any. Idempotent. */
@@ -72,7 +72,7 @@ function store_get_chunk(string $dataDir, string $id, int $n) {
 function store_put_chunk(string $dataDir, string $id, int $n, string $bytes): bool {
     $dir = store_blob_dir($dataDir, $id);
     if (!is_dir($dir) && !mkdir($dir, 0700, true) && !is_dir($dir)) {
-        http_error(500, 'Storage is not writable.');
+        http_error(500, '存储不可写。');
     }
     $final = "{$dir}/{$n}";
     if (file_exists($final)) return false;

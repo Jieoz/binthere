@@ -88,40 +88,40 @@ function b64url_byte_length(string $s, string $where): int {
 
 function validate_wk(string $wk) {
     if (strlen($wk) === 0 || strlen($wk) > MAX_WK_B64) {
-        throw new FormatError('invalid wk');
+        throw new FormatError('wk 无效');
     }
-    if (b64url_byte_length($wk, 'wk') !== 48) throw new FormatError('invalid wk length');
+    if (b64url_byte_length($wk, 'wk') !== 48) throw new FormatError('wk 长度无效');
 }
 
 /** Validate adata, return allowlisted copy. Throws FormatError. */
 function validate_adata(array $a): array {
     assert_exact_keys($a, ADATA_KEYS, 'adata');
 
-    if ($a['alg'] !== 'A256GCM') throw new FormatError('unsupported alg');
-    if (!in_array($a['kdf'], KDFS, true)) throw new FormatError('unsupported kdf');
-    if (!in_array($a['comp'], COMP, true)) throw new FormatError('unsupported comp');
-    if (!in_array($a['fmt'], FORMATS, true)) throw new FormatError('unsupported fmt');
-    if (!is_bool($a['bar'])) throw new FormatError('bar must be boolean');
+    if ($a['alg'] !== 'A256GCM') throw new FormatError('不支持的加密算法');
+    if (!in_array($a['kdf'], KDFS, true)) throw new FormatError('不支持的密钥派生方式');
+    if (!in_array($a['comp'], COMP, true)) throw new FormatError('不支持的压缩方式');
+    if (!in_array($a['fmt'], FORMATS, true)) throw new FormatError('不支持的格式');
+    if (!is_bool($a['bar'])) throw new FormatError('bar 必须为布尔值');
 
     // JSON ints arrive as PHP int/float; require a true integer (JS Number.isInteger).
-    if (!is_int($a['iter'])) throw new FormatError('iter must be an integer');
+    if (!is_int($a['iter'])) throw new FormatError('iter 必须为整数');
     if ($a['kdf'] === 'hkdf') {
-        if ($a['iter'] !== 0) throw new FormatError('iter must be 0 for hkdf');
+        if ($a['iter'] !== 0) throw new FormatError('hkdf 的 iter 必须为 0');
     } else {
-        if ($a['iter'] < ITER_MIN || $a['iter'] > ITER_MAX) throw new FormatError('iter out of range');
+        if ($a['iter'] < ITER_MIN || $a['iter'] > ITER_MAX) throw new FormatError('iter 超出范围');
     }
 
     if (!is_string($a['ivc']) || b64url_byte_length($a['ivc'], 'ivc') !== 12) {
-        throw new FormatError('invalid ivc');
+        throw new FormatError('ivc 无效');
     }
     if (!is_string($a['ivw']) || b64url_byte_length($a['ivw'], 'ivw') !== 12) {
-        throw new FormatError('invalid ivw');
+        throw new FormatError('ivw 无效');
     }
-    if (!is_string($a['skdf'])) throw new FormatError('invalid skdf');
+    if (!is_string($a['skdf'])) throw new FormatError('skdf 无效');
     if ($a['kdf'] === 'pbkdf2-hkdf') {
-        if (b64url_byte_length($a['skdf'], 'skdf') !== 16) throw new FormatError('invalid skdf length');
+        if (b64url_byte_length($a['skdf'], 'skdf') !== 16) throw new FormatError('skdf 长度无效');
     } elseif ($a['skdf'] !== '') {
-        throw new FormatError('skdf must be empty for hkdf');
+        throw new FormatError('hkdf 的 skdf 必须为空');
     }
 
     return [
@@ -140,10 +140,10 @@ function validate_meta(array $m): array {
         }
     }
     if (!isset($m['expire']) || !is_string($m['expire']) || !array_key_exists($m['expire'], EXPIRE_SECONDS)) {
-        throw new FormatError('invalid expire');
+        throw new FormatError('expire 无效');
     }
     if (array_key_exists('created', $m)) {
-        if (!is_int($m['created']) || $m['created'] < 0) throw new FormatError('invalid created');
+        if (!is_int($m['created']) || $m['created'] < 0) throw new FormatError('created 无效');
         return ['expire' => $m['expire'], 'created' => $m['created']];
     }
     return ['expire' => $m['expire']];
@@ -156,11 +156,11 @@ function validate_meta(array $m): array {
 function validate_paste(array $input): array {
     assert_exact_keys($input, ['v', 'ct', 'wk', 'adata', 'meta'], 'paste');
 
-    if ($input['v'] !== FORMAT_VERSION) throw new FormatError('unsupported version');
+    if ($input['v'] !== FORMAT_VERSION) throw new FormatError('不支持的版本');
 
     $ct = $input['ct'];
     if (!is_string($ct) || strlen($ct) === 0 || strlen($ct) > MAX_CT_B64) {
-        throw new FormatError('invalid ct');
+        throw new FormatError('ct 无效');
     }
     b64url_byte_length($ct, 'ct');
     validate_wk($input['wk']);

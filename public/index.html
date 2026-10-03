@@ -1,26 +1,27 @@
 <!doctype html>
-<html lang="en" class="dark" data-bt-base="/temp">
+<html lang="zh-CN" class="dark" data-bt-base="/temp">
     <head>
         <meta charset="utf-8" />
+        <base href="/temp/" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="robots" content="noindex, nofollow" />
         <meta name="referrer" content="no-referrer" />
         <meta name="color-scheme" content="dark light" />
         <!-- Kept in sync with the class-based theme by theme-init.js / theme.js. -->
         <meta name="theme-color" content="#0d1117" />
-        <title>binthere · zero-knowledge paste</title>
+        <title>binthere · 零知识加密粘贴</title>
         <meta
             name="description"
-            content="Encrypted, zero-knowledge pastebin. Your text is encrypted in your browser; the server never sees it."
+            content="加密的零知识粘贴板。内容在你的浏览器内加密，服务器永远看不到。"
         />
         <!-- Link previews (chat apps / social scrapers). Fragment keys are never sent
        to servers, so a shared paste link only ever exposes this generic card. -->
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="binthere" />
-        <meta property="og:title" content="binthere · zero-knowledge paste" />
+        <meta property="og:title" content="binthere · 零知识加密粘贴" />
         <meta
             property="og:description"
-            content="Encrypted, zero-knowledge pastebin. Your text is encrypted in your browser; the server never sees it."
+            content="加密的零知识粘贴板。内容在你的浏览器内加密，服务器永远看不到。"
         />
         <meta property="og:url" content="https://binthere.gaury.dev/" />
         <meta property="og:image" content="https://binthere.gaury.dev/opengraph.png" />
@@ -50,16 +51,16 @@
         <!-- Slim announcement bar. Hidden by default so returning/dismissed
        visitors never see a flash; announce.js reveals it only when the
        dismissal flag is absent (mirrors theme-init's localStorage pattern). -->
-        <aside class="announce" id="announce" aria-label="Announcement" hidden>
+        <aside class="announce" id="announce" aria-label="公告" hidden>
             <a
                 class="announce-link"
                 href="https://gaury.dev/blog/because-i-dont-trust-pastebins-either"
                 rel="noopener"
                 target="_blank"
             >
-                <span class="announce-tag">New</span>
+                <span class="announce-tag">新</span>
                 <span class="announce-txt"
-                    >Why I don’t trust pastebins either</span
+                    >为什么我也不信任那些粘贴板</span
                 >
                 <span class="announce-arrow" aria-hidden="true">→</span>
             </a>
@@ -67,7 +68,7 @@
                 type="button"
                 class="announce-close"
                 id="announce-close"
-                aria-label="Dismiss announcement"
+                aria-label="关闭公告"
             >
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <path
@@ -94,7 +95,7 @@
             </g>
         </svg>
         <header class="topbar reveal">
-            <a class="brand" href="./" id="brand" aria-label="binthere — home">
+            <a class="brand" href="./" id="brand" aria-label="binthere — 首页">
                 <span class="wm-a">bin</span><span class="wm-b">there</span>
             </a>
             <div class="topbar-right">
@@ -106,7 +107,7 @@
                     href="https://github.com/nxfu/binthere"
                     rel="noopener"
                     target="_blank"
-                    aria-label="binthere on GitHub"
+                    aria-label="binthere 的 GitHub 页面"
                 >
                     <!-- Octicons "mark-github" (MIT). -->
                     <svg class="gh-mark" viewBox="0 0 16 16" aria-hidden="true">
@@ -128,13 +129,13 @@
                     </span>
                 </a>
                 <a class="back" id="newlink" href="./" hidden
-                    ><span class="arrow">＋</span><span>new paste</span></a
+                    ><span class="arrow">＋</span><span>新建粘贴</span></a
                 >
                 <button
                     type="button"
                     id="themeToggle"
                     class="theme-toggle"
-                    aria-label="Toggle light/dark theme"
+                    aria-label="切换亮色/暗色主题"
                     aria-pressed="true"
                 >
                     <svg
@@ -172,10 +173,10 @@
             <!-- ── CREATE ─────────────────────────────────────────────────────────── -->
             <section id="view-create" tabindex="-1" hidden>
                 <div class="head reveal d1">
-                    <p class="eyebrow">private by design</p>
-                    <h1 class="title">Say it once. <span class="title-em">Sealed.</span></h1>
+                    <p class="eyebrow">隐私始于设计</p>
+                    <h1 class="title">只说一次，<span class="title-em">即刻封存。</span></h1>
                     <p class="subtitle">
-                        Your note stays yours. Read once, then self-destructs.
+                        内容只属于你：仅可读取一次，随后自动销毁。
                     </p>
                 </div>
 
@@ -183,8 +184,8 @@
                     <textarea
                         id="editor"
                         class="editor"
-                        placeholder="Write or paste your note… Only the recipient with the link can decrypt it."
-                        aria-label="Note content"
+                        placeholder="输入或粘贴你的内容……只有持有链接的接收者才能解密。"
+                        aria-label="内容"
                         spellcheck="false"
                     ></textarea>
 
@@ -195,7 +196,7 @@
                                 class="lock"
                                 id="lock"
                                 aria-pressed="false"
-                                aria-label="Protect with a password"
+                                aria-label="使用密码保护"
                             >
                                 <svg
                                     class="lock-ico"
@@ -231,16 +232,16 @@
                                         fill="currentColor"
                                     />
                                 </svg>
-                                <span class="lock-txt">Password</span>
+                                <span class="lock-txt">密码</span>
                             </button>
                         </div>
                         <button
                             type="button"
                             id="create"
                             class="send"
-                            aria-label="Encrypt and create link"
+                            aria-label="加密并生成链接"
                         >
-                            <span class="send-txt">Create link</span>
+                            <span class="send-txt">生成链接</span>
                             <svg
                                 class="send-ico"
                                 viewBox="0 0 24 24"
@@ -262,15 +263,15 @@
                 <div
                     class="features reveal d3"
                     role="list"
-                    aria-label="How binthere protects your note"
+                    aria-label="binthere 如何保护你的内容"
                 >
-                    <span class="feat" role="listitem">Private</span>
+                    <span class="feat" role="listitem">私密</span>
                     <span class="feat" role="listitem"
-                        >End-to-end encrypted</span
+                        >端到端加密</span
                     >
-                    <span class="feat" role="listitem">One-time view</span>
+                    <span class="feat" role="listitem">仅可查看一次</span>
                     <span class="feat" role="listitem"
-                        >Auto-deletes in 24 hours</span
+                        >24 小时后自动删除</span
                     >
                 </div>
 
@@ -288,29 +289,29 @@
                     id="pw-modal-dialog"
                 >
                     <h2 class="modal-title" id="pw-modal-title">
-                        Paste password
+                        设置粘贴密码
                     </h2>
                     <p class="modal-sub">
-                        This password will be required to unlock this paste.
+                        打开此内容时需要输入该密码。
                     </p>
                     <div class="pw modal-pw">
                         <input
                             type="password"
                             id="modal-password"
                             class="input"
-                            placeholder="Enter a password"
+                            placeholder="输入密码"
                             autocomplete="off"
                             data-bwignore
                             data-lpignore="true"
                             data-1p-ignore
                             data-form-type="other"
-                            aria-label="Password"
+                            aria-label="密码"
                         />
                         <button
                             type="button"
                             class="peek"
                             id="modal-peek"
-                            aria-label="Show password"
+                            aria-label="显示密码"
                             aria-pressed="false"
                         >
                             <svg
@@ -353,19 +354,19 @@
                             type="password"
                             id="modal-password-confirm"
                             class="input"
-                            placeholder="Repeat the password"
+                            placeholder="再次输入密码"
                             autocomplete="off"
                             data-bwignore
                             data-lpignore="true"
                             data-1p-ignore
                             data-form-type="other"
-                            aria-label="Repeat password"
+                            aria-label="重复密码"
                         />
                         <button
                             type="button"
                             class="peek"
                             id="modal-peek-confirm"
-                            aria-label="Show password"
+                            aria-label="显示密码"
                             aria-pressed="false"
                         >
                             <svg
@@ -408,10 +409,10 @@
                             class="btn modal-btn"
                             id="pw-cancel"
                         >
-                            Cancel
+                            取消
                         </button>
                         <button type="button" class="send" id="pw-create">
-                            <span class="send-txt">Create</span>
+                            <span class="send-txt">创建</span>
                             <svg
                                 class="send-ico"
                                 viewBox="0 0 24 24"
@@ -434,13 +435,11 @@
             <!-- ── SUCCESS ────────────────────────────────────────────────────────── -->
             <section id="view-success" tabindex="-1" hidden>
                 <div class="head reveal d1">
-                    <p class="eyebrow">sealed</p>
-                    <h1 class="title">Share your link</h1>
+                    <p class="eyebrow">已封存</p>
+                    <h1 class="title">分享你的链接</h1>
                     <p class="subtitle" id="success-note">
-                        Send this to the one person who should read it — it
-                        self-destructs the moment it's opened. The key that
-                        unlocks it lives inside the link itself, so keep the
-                        whole link private and never send it back to us.
+                        把它发给唯一该读的人——一经打开即刻销毁。解锁密钥就在链接本身之中，
+                        请对整个链接保密，也不要回传给我们。
                     </p>
                 </div>
                 <div class="stack reveal d2">
@@ -467,30 +466,30 @@
                                 </g>
                             </svg>
                             <span class="seal-label mono"
-                                >scan to open · one-time read</span
+                                >扫码打开 · 仅限一次</span
                             >
                         </div>
                         <div class="card qr">
-                            <img id="qr" alt="QR code for the paste link" />
+                            <img id="qr" alt="粘贴链接的二维码" />
                         </div>
                     </div>
                     <div class="linkrow">
                         <div class="url mono" id="paste-url"></div>
                         <button type="button" class="copy-btn" id="copy-url">
-                            copy link
+                            复制链接
                         </button>
                     </div>
                     <div class="btn-row">
                         <button type="button" class="btn" id="open-link">
-                            Open link
+                            打开链接
                         </button>
-                        <a class="btn" href="./" id="another">Create another</a>
+                        <a class="btn" href="./" id="another">再建一条</a>
                         <button
                             type="button"
                             class="btn danger btn-end"
                             id="delete-btn"
                         >
-                            Delete now
+                            立即删除
                         </button>
                     </div>
                     <p class="msg" id="success-msg" role="status" hidden></p>
@@ -500,11 +499,11 @@
             <!-- ── PASSWORD PROMPT ────────────────────────────────────────────────── -->
             <section id="view-password" tabindex="-1" hidden>
                 <div class="head reveal d1">
-                    <p class="eyebrow">locked</p>
-                    <h1 class="title">Enter the password</h1>
+                    <p class="eyebrow">已上锁</p>
+                    <h1 class="title">输入密码</h1>
                     <p class="subtitle" id="password-subtitle">
-                        This note has a password. Ask whoever sent it to you,
-                        then type it in to open the note.
+                        这条内容设有密码。向发送者索取密码，
+                        输入后即可打开。
                     </p>
                 </div>
                 <div class="stack reveal d2">
@@ -513,19 +512,19 @@
                             type="password"
                             id="decrypt-password"
                             class="input"
-                            placeholder="Enter password"
+                            placeholder="输入密码"
                             autocomplete="off"
                             data-bwignore
                             data-lpignore="true"
                             data-1p-ignore
                             data-form-type="other"
-                            aria-label="Password"
+                            aria-label="密码"
                         />
                         <button
                             type="button"
                             class="peek"
                             id="peek2"
-                            aria-label="Show password"
+                            aria-label="显示密码"
                             aria-pressed="false"
                         >
                             <svg
@@ -562,7 +561,7 @@
                         </button>
                     </div>
                     <button type="button" class="cta" id="decrypt-btn">
-                        Decrypt
+                        解密
                     </button>
                     <p class="msg error" id="password-msg" role="alert" hidden></p>
                 </div>
@@ -578,10 +577,10 @@
                         class="btn btn-grow"
                         id="copy-content"
                     >
-                        Copy text
+                        复制文本
                     </button>
                     <button type="button" class="btn" id="toggle-raw">
-                        Raw
+                        原文
                     </button>
                 </div>
             </section>
@@ -611,10 +610,10 @@
                         />
                         <circle cx="12" cy="17.6" r="1" fill="currentColor" />
                     </svg>
-                    <p class="msg" id="status-msg" role="status">loading…</p>
+                    <p class="msg" id="status-msg" role="status">加载中……</p>
                     <div class="btn-row center" id="status-actions" hidden>
                         <button type="button" class="cta" id="reveal-burn">
-                            Reveal note
+                            显示内容
                         </button>
                     </div>
                     <p
@@ -625,7 +624,7 @@
                         hidden
                     >
                         <span class="status-timer-label"
-                            >Deletes in</span
+                            >删除倒计时</span
                         >
                         <span
                             class="status-timer-clock"
@@ -635,35 +634,35 @@
                     </p>
                     <div class="btn-row center" id="status-new" hidden>
                         <a class="cta cta-inline" href="./" id="status-new-link"
-                            >Create new paste</a
+                            >新建粘贴</a
                         >
                     </div>
                 </div>
             </section>
 
             <footer class="foot reveal d4">
-                <p class="foot-crypto mono" aria-label="Cryptography">
-                    AES-256-GCM · HKDF-SHA256 · Key stays in the URL
-                    <span class="foot-frag">#fragment</span>
+                <p class="foot-crypto mono" aria-label="加密方式">
+                    AES-256-GCM · HKDF-SHA256 · 密钥只存在于链接的
+                    <span class="foot-frag">#fragment</span> 中
                 </p>
                 <p class="foot-links" id="foot-links">
                     <a
                         href="https://github.com/nxfu/binthere"
                         rel="noopener"
                         target="_blank"
-                        >Source</a
+                        >源码</a
                     >
                     <a
                         href="https://github.com/nxfu/binthere/blob/main/SECURITY.md"
                         rel="noopener"
                         target="_blank"
-                        >Threat Model</a
+                        >威胁模型</a
                     >
                     <a href="./.well-known/security.txt" rel="noopener"
-                        >Security</a
+                        >安全</a
                     >
                     <a href="https://gaury.dev" rel="noopener"
-                        >Developer</a
+                        >开发者</a
                     >
                 </p>
             </footer>
