@@ -2,7 +2,7 @@
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 
-const VIEWS = ['view-create', 'view-success', 'view-password', 'view-paste', 'view-status'];
+const VIEWS = ['view-create', 'view-success', 'view-password', 'view-paste', 'view-status', 'view-manage'];
 
 /** Show exactly one top-level view section, hide the rest. */
 export function showView(name) {

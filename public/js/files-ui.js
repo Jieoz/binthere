@@ -13,6 +13,7 @@ import { randomBytes, b64urlFromBytes, bytesFromB64url } from './bytes.js';
 import { buildAAD } from './format.js';
 import { aesGcmEncrypt, aesGcmDecrypt } from './crypto.js';
 import { btUrl } from './base.js';
+import { consumeFile } from './api.js';
 
 export const CHUNK_SIZE = 8 * 1024 * 1024;      // plaintext bytes per chunk
 export const MAX_FILE = 512 * 1024 * 1024;      // 512 MiB overall budget
@@ -33,9 +34,11 @@ async function j(res, what) {
 /**
  * Encrypt + upload a File. onProgress(done, total) fires after each chunk.
  * opts.expire: '1hour' | '1day' | '1week' (default '1day').
+ * opts.burn: true → burn-on-download (adata.bar=true): the receiver's client
+ * consumes the paste after a full download; false → time retention + access log.
  * Returns { id, deletetoken, fragment } — fragment is the share secret (#…).
  */
-export async function uploadFile(file, { onProgress, expire = '1day' } = {}) {
+export async function uploadFile(file, { onProgress, expire = '1day', burn = true } = {}) {
   if (file.size > MAX_FILE) {
     throw new Error(`文件过大（上限 ${Math.floor(MAX_FILE / 1024 / 1024)} MiB）。`);
   }
@@ -51,7 +54,7 @@ export async function uploadFile(file, { onProgress, expire = '1day' } = {}) {
 
   const adata = {
     alg: 'A256GCM', kdf: 'hkdf', iter: 0, comp: 'none', fmt: 'plaintext',
-    bar: false, ivc: b64urlFromBytes(ivc), ivw: b64urlFromBytes(ivw), skdf: '',
+    bar: !!burn, ivc: b64urlFromBytes(ivc), ivw: b64urlFromBytes(ivw), skdf: '',
   };
   const aad = buildAAD(adata);
 
@@ -67,9 +70,10 @@ export async function uploadFile(file, { onProgress, expire = '1day' } = {}) {
   const ct = await aesGcmEncrypt(contentKey, ivc,
     new TextEncoder().encode(JSON.stringify(manifest)), aad);
 
-  // File pastes are KV-class (idempotent reads — the receiver may download
-  // repeatedly within the TTL), so bar stays false throughout: the manifest is
-  // encrypted with the same AAD that will authenticate it on read.
+  // File pastes are KV-class (idempotent reads — the receiver may retry
+  // within the TTL); bar carries the burn-on-download MODE bit, consumed by
+  // the receiver's client after a complete transfer. The manifest is encrypted
+  // with the same AAD that will authenticate it on read.
   const body = {
     v: 1, ct: b64urlFromBytes(ct), wk: b64urlFromBytes(wk),
     adata, meta: { expire },
@@ -101,10 +105,12 @@ export async function uploadFile(file, { onProgress, expire = '1day' } = {}) {
 }
 
 /**
- * Fetch + decrypt a file paste. Returns { name, size, bytes, mime }.
+ * Fetch + decrypt a file paste. Returns { name, size, bytes, bar, consumed }.
+ * opts.keepSeconds > 0: on bar pastes, ask the server to keep the file for
+ * this long instead of destroying it immediately (capped by server).
  * The manifest paste must still exist (KV-class, idempotent read).
  */
-export async function downloadFile(id, fragment) {
+export async function downloadFile(id, fragment, { keepSeconds = 0 } = {}) {
   const res = await fetch(api(`/paste/${encodeURIComponent(id)}`), { cache: 'no-store' });
   const paste = await j(res, '读取文件');
   const F = bytesFromB64url(fragment);
@@ -131,7 +137,14 @@ export async function downloadFile(id, fragment) {
     const plain = await aesGcmDecrypt(ck, bytesFromB64url(man.ivs[n]), cb, new TextEncoder().encode(`${id}:${n}`));
     out.set(plain, n * man.chunkSize);
   }
-  return { name: String(man.name || 'file'), size: man.size, bytes: out };
+  // bar=true (burn-on-download): every chunk is downloaded AND authenticated —
+  // tell the server to destroy it (or keep it for keepSeconds). A failed
+  // consume must not fail the download itself (the zombie sweep is the net).
+  let consumed = null;
+  if (paste.adata.bar) {
+    try { consumed = await consumeFile(id, keepSeconds); } catch { /* zombie sweep is the net */ }
+  }
+  return { name: String(man.name || 'file'), size: man.size, bytes: out, bar: !!paste.adata.bar, consumed };
 }
 
 /** Trigger a browser save dialog for decrypted bytes. */

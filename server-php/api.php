@@ -6,10 +6,13 @@
 //   POST   /api/paste                create text paste (format v1 JSON)
 //   GET    /api/paste/<id>           read (burn: never consumes; ?meta=1 = head)
 //   POST   /api/paste/<id>/consume   destructive burn read (X-Burn-Intent: consume)
+//   GET    /api/paste/<id>/status    sender view (X-Delete-Token) — state + event log
 //   DELETE /api/paste/<id>           delete (X-Delete-Token)
 //   POST   /api/file                 create file paste (manifest = format v1 JSON)
 //   PUT    /api/file/<id>/<n>        upload ciphertext chunk (X-Delete-Token)
 //   GET    /api/file/<id>/<n>        download ciphertext chunk (X-Accel-Redirect)
+//   POST   /api/file/<id>/consume    receiver finished → tombstone (X-File-Keep: Ns)
+//   GET    /api/file/<id>/status     sender view (X-Delete-Token)
 //   GET    /api/stars                private deployment → {"stars":null}
 //
 // Responses/headers mirror upstream exactly: {id, deletetoken} on create,
@@ -133,12 +136,13 @@ function read_paste(string $id, bool $peekOnly, string $dataDir) {
     if ($info['burn']) {
         // GET on a burn id NEVER consumes: head only, without `ct`.
         $rec = store_consume_burn_peek($dataDir, $id);
-        if ($rec === null) json_error(410, 'This document was single-use and has already been read, or has expired.');
+        if ($rec === null || !isset($rec['p'])) json_error(410, 'This document was single-use and has already been read, or has expired.');
         json_out(head_of($rec['p']), 200);
     }
 
     $rec = store_get_meta($dataDir, $id);
     if ($rec === null) json_error(404, GONE_MSG);
+    if (!isset($rec['p'])) json_error(410, 'This document was single-use and has already been read, or has expired.');
     if ($peekOnly) {
         json_out(head_of($rec['p'], $rec), 200);
     }
@@ -159,9 +163,64 @@ function consume_paste(string $id, string $dataDir) {
     if ($info === null) json_error(404, GONE_MSG);
     if (!$info['burn']) json_error(404, 'Only one-time-view pastes can be consumed.');
 
+    // Tombstone BEFORE reading: the winning concurrent consumer leaves a
+    // status record, the loser still sees the 410 race the same as before.
     $rec = store_consume_burn($dataDir, $id);
     if ($rec === null) json_error(410, 'This document was single-use and has already been read, or has expired.');
+    store_leave_tombstone($dataDir, $id, 'consumed', $rec);
     json_out($rec['p'], 200);
+}
+
+/**
+ * Sender status view for TEXT pastes — mirrors files.php file_status but for
+ * k/b ids. Tombstones (consumed/expired) answer with state + events; live
+ * burn pastes report 'armed' (created, not yet read). Requires delete token.
+ */
+function paste_status(string $id, string $dataDir) {
+    $token = $_SERVER['HTTP_X_DELETE_TOKEN'] ?? null;
+    if (!$token) json_error(400, '缺少删除令牌。');
+    $info = parse_id($id);
+    if ($info === null) json_error(404, GONE_MSG);
+    $rec = store_get_meta($dataDir, $id);
+    if ($rec === null) json_error(404, GONE_MSG);
+    if (!verify_token($token, $rec['dth'])) {
+        json_error(403, 'Wrong deletion token.');
+    }
+    if (isset($rec['p'])) {
+        json_out([
+            'state' => $info['burn'] ? 'armed' : 'live',
+            'consumedAt' => null,
+            'exp' => $rec['exp'],
+            'keepUntil' => $rec['keepUntil'] ?? null,
+            'meta' => $rec['p']['meta'] ?? null,
+            'events' => $rec['events'] ?? [],
+        ], 200);
+    }
+    json_out([
+        'state' => $rec['state'] ?? 'consumed',
+        'consumedAt' => $rec['consumedAt'] ?? null,
+        'exp' => $rec['origExp'] ?? $rec['exp'],
+        'keepUntil' => $rec['keepUntil'] ?? null,
+        'meta' => $rec['meta'] ?? null,
+        'events' => $rec['events'] ?? [],
+    ], 200);
+}
+
+/**
+ * Re-leave a tombstone for a burn paste AFTER its content was renamed away by
+ * store_consume_burn. Only the token hash, meta, expiry event survive.
+ */
+function store_leave_tombstone(string $dataDir, string $id, string $state, array $rec) {
+    $tomb = [
+        'state' => $state,
+        'dth' => $rec['dth'],
+        'exp' => time() + BT_TOMBSTONE_TTL,
+        'events' => array_merge($rec['events'] ?? [], [['t' => time(), 'e' => 'read']]),
+        'consumedAt' => time(),
+        'meta' => $rec['p']['meta'] ?? null,
+        'origExp' => $rec['exp'],
+    ];
+    store_update_meta($dataDir, $id, $tomb);
 }
 
 function delete_paste(string $id, string $dataDir) {
@@ -222,8 +281,13 @@ function main() {
         consume_paste(urldecode($m[1]), $dataDir);
     }
 
+    if (preg_match('#^/paste/([^/]+)/status$#', $path, $m)) {
+        if ($method !== 'GET') json_error(405, '不支持的请求方法。', ['Allow' => 'GET']);
+        paste_status(urldecode($m[1]), $dataDir);
+    }
+
     if (preg_match('#^/file(/.+)$#', $path, $m)) {
-        route_file($method, ltrim($m[1], '/'), $dataDir); // exits
+        route_file($method, ltrim($m[1], '/'), $dataDir); // always exits (405/410/json_out/get_chunk)
     }
 
     if (preg_match('#^/(paste|file)/([^/]+)$#', $path, $m)) {

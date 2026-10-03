@@ -457,6 +457,10 @@ html.dark .theme-toggle .ico-moon { display: block; }
 
 /* ── stamps (badges) ─────────────────────────────────────────────────────── */
 .pills { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
+.manage-log { list-style: none; padding: 0; margin: .5rem 0 0; max-height: 18rem; overflow-y: auto;
+  font-family: var(--mono); font-size: .8125rem; color: var(--ink-2); }
+.manage-log li { padding: .32rem 0; border-bottom: 1px solid var(--rule-2); }
+.keep-label { color: var(--ink-2); font-size: .9rem; align-self: center; }
 .pill { display: inline-flex; align-items: center; padding: .28rem .6rem; border: 1px solid var(--rule-2); border-radius: 3px;
   font-family: var(--mono); font-size: .6563rem; font-weight: 500; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-2); }
 .pill.ok { color: var(--ok); border-color: color-mix(in oklab, var(--rule-2), var(--ok) 45%); }

@@ -99,3 +99,36 @@ export async function deletePaste(id, token) {
   if (!isPlainObject(data) || data.status !== 'deleted') throw malformed();
   return data;
 }
+
+/**
+ * Sender status view: state + event log, keyed by the delete token (the same
+ * credential that deletes). Works for text AND file pastes, live or consumed.
+ * Shape: { state, consumedAt, exp, keepUntil, meta, events }.
+ */
+export async function fetchStatus(kind, id, token) {
+  const res = await fetch(btUrl(`/api/${kind}/${encodeURIComponent(id)}/status`), {
+    headers: { 'x-delete-token': token },
+    cache: 'no-store',
+  });
+  if (!res.ok) await throwHttpError(res, 'Not found.');
+  const data = requireObject(await readJson(res));
+  if (typeof data.state !== 'string' || !Array.isArray(data.events)) throw malformed();
+  return data;
+}
+
+/**
+ * Receiver completion signal for file pastes: called after EVERY chunk is
+ * downloaded and decrypted. keepSeconds > 0 asks the server to keep the file
+ * (bounded by its own expiry); 0/undefined destroys it now. Tombstone head is
+ * returned: { state: 'consumed'|'kept', consumedAt?, keepUntil? }.
+ */
+export async function consumeFile(id, keepSeconds = 0) {
+  const headers = { 'x-file-keep': String(Math.max(0, Math.floor(keepSeconds))) };
+  const res = await fetch(btUrl(`/api/file/${encodeURIComponent(id)}/consume`), {
+    method: 'POST',
+    headers,
+    cache: 'no-store',
+  });
+  if (!res.ok) await throwHttpError(res, 'Not found.');
+  return requireObject(await readJson(res));
+}

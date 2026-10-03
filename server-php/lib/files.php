@@ -1,6 +1,16 @@
 <?php
 // files.php — chunk upload/download for file pastes ('f' class).
 // Port of server/files.js. Protocol (all under the deployment's base path):
+//   PUT    /api/file/<id>/<n>       upload chunk n (X-Delete-Token, octet-stream)
+//   GET    /api/file/<id>/<n>       download chunk n (X-Accel-Redirect)
+//   POST   /api/file/<id>/consume   receiver finished → tombstone (X-File-Keep: Ns optional)
+//   GET    /api/file/<id>/status    sender view (X-Delete-Token) — state + event log
+//
+// Retention model: file pastes with adata.bar=true are BURN-ON-DOWNLOAD — the
+// client downloads+decrypts ALL chunks first, then calls /consume. The server
+// deletes content at consume (or after the negotiated keep window), never on
+// first byte — a dropped mid-transfer connection must be retryable, not fatal.
+// bar=false keeps the legacy time-retention model with an access log.
 //   PUT  /api/file/<id>/<n>   body = raw ciphertext chunk (≤ CHUNK_MAX),
 //                             header X-Delete-Token: <creation token>
 //   GET  /api/file/<id>/<n>   → raw chunk bytes (no auth — knowledge of the
@@ -30,6 +40,14 @@ function bt_max_chunks(): int {
  * Returns true if the response was sent.
  */
 function route_file(string $method, string $path, string $dataDir): bool {
+    if ($method === 'POST' && preg_match('#^([^/]+)/consume$#', $path, $m)) {
+        consume_file(urldecode($m[1]), $dataDir); // exits
+        return true;
+    }
+    if ($method === 'GET' && preg_match('#^([^/]+)/status$#', $path, $m)) {
+        file_status(urldecode($m[1]), $dataDir); // exits
+        return true;
+    }
     if (!preg_match('#^([^/]+)(?:/(\d+))?$#', $path, $m)) {
         json_error(404, '内容不存在、已过期或已被删除。');
     }
@@ -47,8 +65,8 @@ function route_file(string $method, string $path, string $dataDir): bool {
     if ($method === 'GET') {
         if (!isset($m[2])) json_error(405, '不支持的请求方法。', ['Allow' => 'PUT /api/file/<id>/<n>, GET /api/file/<id>/<n>']);
         get_chunk($id, (int)$m[2], $dataDir);
-        bt_count_download($dataDir, $id, (int)$m[2]); // after serve: counter never blocks the stream
-        return true;
+        bt_count_download($dataDir, $id, (int)$m[2]); // after serve: logging never blocks the stream
+        exit; // served — main() must NOT fall through to the /file/<id>/<n> re-route
     }
     // DELETE /api/file/<id> — whole-paste delete, same token contract as text.
     if ($method === 'DELETE' && !isset($m[2])) {
@@ -156,23 +174,102 @@ function read_capped_body(int $cap) {
 }
 
 /**
- * Download-session counter for the sender's visibility UI. Chunk 0 is the
+ * Download-session marker for the sender's visibility UI. Chunk 0 is the
  * manifest gate — every full download fetches it exactly once, so a GET on
- * chunk 0 marks one download "session". Retries within BT_DL_WINDOW seconds
- * (mid-download network blips, parallel range re-fetches) collapse into the
- * same session. The counter lives in the meta record (`dl`, `dlat`); it never
- * gates access and never alters the zero-knowledge wire format.
+ * chunk 0 marks one download "session" (firstdl drives the zombie sweep).
+ * Retries within BT_DL_WINDOW seconds (mid-download network blips, parallel
+ * range re-fetches) collapse into the same session. Events are metadata only;
+ * they never gate access and never alter the zero-knowledge wire format.
  */
 const BT_DL_WINDOW = 120;
 
-function bt_count_download(string $dataDir, string $id, int $n): void {
+function bt_count_download(string $dataDir, string $id, int $n) { // prod PHP 7.0: no void return type
     if ($n !== 0) return;
     $rec = store_get_meta($dataDir, $id);
-    if ($rec === null) return;
+    if ($rec === null || !isset($rec['p'])) return;
     $now = time();
     $last = $rec['dlat'] ?? 0;
+    // Single read-modify-write: append the event to THIS record (a separate
+    // store_log_event() call would write first and then be clobbered by the
+    // dlat update below — same-record RMW must stay in one place).
+    if ($now - $last > BT_DL_WINDOW) {
+        $events = $rec['events'] ?? [];
+        $dup = false;
+        foreach (array_reverse($events) as $e) {
+            if (($e['e'] ?? '') === 'download') { $dup = ($now - (int)($e['t'] ?? 0)) <= BT_EVENT_WINDOW; break; }
+        }
+        if (!$dup) {
+            $events[] = ['t' => $now, 'e' => 'download'];
+            if (count($events) > BT_EVENT_CAP) $events = array_slice($events, -BT_EVENT_CAP);
+            $rec['events'] = $events;
+        }
+    }
     $rec['dlat'] = $now;
-    if ($now - $last <= BT_DL_WINDOW && isset($rec['dl'])) return; // same session
-    $rec['dl'] = ($rec['dl'] ?? 0) + 1;
+    if (!isset($rec['firstdl'])) $rec['firstdl'] = $now; // zombie sweep anchor
     store_update_meta($dataDir, $id, $rec);
+}
+
+/**
+ * Receiver-side completion: the client calls this only after EVERY chunk is
+ * downloaded AND decrypted. X-File-Keep: <seconds> (0/absent = delete now)
+ * negotiates a bounded keep window, capped by the paste's own expiry.
+ * Response is a tombstone head — the caller never gets content here.
+ */
+function consume_file(string $id, string $dataDir) {
+    if (!rl_take('consume', client_ip(), 30)) {
+        json_error(429, '请求过于频繁，请稍后再试。');
+    }
+    $info = parse_id($id);
+    if ($info === null || !$info['file']) json_error(404, GONE_MSG);
+    $rec = store_get_meta($dataDir, $id);
+    if ($rec === null) json_error(410, '文件已被下载销毁或已过期。');
+    if (!isset($rec['p'])) { // already consumed/expired — echo the tombstone
+        json_out(['state' => $rec['state'] ?? 'consumed', 'consumedAt' => $rec['consumedAt'] ?? null], 200);
+    }
+    if ($rec['exp'] > 0 && $rec['exp'] <= time()) {
+        store_tombstone($dataDir, $id, 'expired');
+        json_error(410, '文件已被下载销毁或已过期。');
+    }
+
+    $keep = 0;
+    if (isset($_SERVER['HTTP_X_FILE_KEEP'])) {
+        $keep = (int)$_SERVER['HTTP_X_FILE_KEEP'];
+        if ($keep < 0 || $keep > 604800) json_error(400, '保留窗口无效。');
+        if ($rec['exp'] > 0) $keep = min($keep, max(0, $rec['exp'] - time()));
+    }
+    store_log_event($dataDir, $id, 'complete');
+    if ($keep > 0) {
+        $rec = store_get_meta($dataDir, $id);
+        $rec['keepUntil'] = time() + $keep;
+        store_update_meta($dataDir, $id, $rec);
+        json_out(['state' => 'kept', 'keepUntil' => $rec['keepUntil']], 200);
+    }
+    $tomb = store_tombstone($dataDir, $id, 'consumed');
+    json_out(['state' => 'consumed', 'consumedAt' => $tomb['consumedAt'] ?? time()], 200);
+}
+
+/**
+ * Sender status view — requires the delete token (the same credential that
+ * deletes the paste). Works on live pastes AND tombstones, so the sender can
+ * always answer "what happened to my file". Never returns content.
+ */
+function file_status(string $id, string $dataDir) {
+    $token = $_SERVER['HTTP_X_DELETE_TOKEN'] ?? null;
+    if (!$token) json_error(400, '缺少删除令牌。');
+    $info = parse_id($id);
+    if ($info === null) json_error(404, GONE_MSG);
+    $rec = store_get_meta($dataDir, $id);
+    if ($rec === null) json_error(404, GONE_MSG);
+    if (!verify_token($token, $rec['dth'])) {
+        json_error(403, 'Wrong deletion token.');
+    }
+    $state = isset($rec['p']) ? 'live' : ($rec['state'] ?? 'live');
+    json_out([
+        'state' => $state,
+        'consumedAt' => $rec['consumedAt'] ?? null,
+        'exp' => $rec['origExp'] ?? $rec['exp'],
+        'keepUntil' => $rec['keepUntil'] ?? null,
+        'meta' => $rec['meta'] ?? null,
+        'events' => $rec['events'] ?? [],
+    ], 200);
 }

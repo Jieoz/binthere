@@ -132,5 +132,61 @@ const bigId = f.id; // already deleted → expect 404 on put to deleted id
 r = await j(await fetch(`${API}/file/${bigId}/0`, { method: 'PUT', headers: { 'content-type': 'application/octet-stream', 'x-delete-token': 'C'.repeat(43) }, body: Buffer.from(big) }));
 check('oversized/dead id rejected', r.status === 404 || r.status === 403 || r.status === 413, `got ${r.status}`);
 
+// ── 3. sender status view (file + text) ─────────────────────────────────────
+// Live file paste: status answers 'live' with the event log; wrong token 403.
+r = await j(await fetch(`${API}/file`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...fbody, adata: { ...adata, bar: false } }) }));
+check('retention file create', r.status === 201 && r.body.id[0] === 'f', JSON.stringify(r.body));
+const rf = r.body;
+r = await j(await fetch(`${API}/file/${rf.id}/status`, { headers: { 'x-delete-token': 'A'.repeat(43) } }));
+check('status wrong token 403', r.status === 403, `got ${r.status}`);
+r = await j(await fetch(`${API}/file/${rf.id}/status`, { headers: { 'x-delete-token': rf.deletetoken } }));
+check('status live', r.status === 200 && r.body.state === 'live' && Array.isArray(r.body.events), JSON.stringify(r.body).slice(0, 120));
+
+// chunk-0 GET logs a download session; repeat GETs inside the window collapse.
+// (Chunks must exist for the GET to log — upload them first.)
+for (let n = 0; n < CHUNKS; n++) {
+  await fetch(`${API}/file/${rf.id}/${n}`, { method: 'PUT', headers: { 'content-type': 'application/octet-stream', 'x-delete-token': rf.deletetoken }, body: Buffer.from(chunkCts[n]) });
+}
+await fetch(`${API}/file/${rf.id}/0`);
+await fetch(`${API}/file/${rf.id}/0`);
+r = await j(await fetch(`${API}/file/${rf.id}/status`, { headers: { 'x-delete-token': rf.deletetoken } }));
+check('chunk0 GET logged once', r.status === 200 && r.body.events.filter((e) => e.e === 'download').length === 1,
+  JSON.stringify(r.body.events));
+
+// consume with keep window: content survives until keepUntil, status shows kept.
+r = await j(await fetch(`${API}/file/${rf.id}/consume`, { method: 'POST', headers: { 'x-file-keep': '3600' } }));
+check('consume keep → kept', r.status === 200 && r.body.state === 'kept' && r.body.keepUntil > Date.now() / 1000, JSON.stringify(r.body));
+r = await fetch(`${API}/file/${rf.id}/0`);
+check('kept content still downloadable', r.status === 200, `got ${r.status}`);
+r = await j(await fetch(`${API}/file/${rf.id}/status`, { headers: { 'x-delete-token': rf.deletetoken } }));
+check('status kept + complete event', r.body.state === 'live' && r.body.keepUntil > 0 && r.body.events.some((e) => e.e === 'complete'), JSON.stringify(r.body));
+// keep > paste expiry gets capped to the remaining lifetime (1day — cap must hold)
+r = await j(await fetch(`${API}/file/${rf.id}/consume`, { method: 'POST', headers: { 'x-file-keep': '99999999' } }));
+check('oversize keep rejected/capped', r.status === 400 || r.status === 200, `got ${r.status}`);
+// cleanup
+await j(await fetch(`${API}/file/${rf.id}`, { method: 'DELETE', headers: { 'x-delete-token': rf.deletetoken } }));
+
+// consume with no keep: content gone, tombstone answers, chunk download 404.
+r = await j(await fetch(`${API}/file`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...fbody, adata: { ...adata, bar: true } }) }));
+check('burn file create', r.status === 201, `got ${r.status}`);
+const bf = r.body;
+for (let n = 0; n < CHUNKS; n++) {
+  await fetch(`${API}/file/${bf.id}/${n}`, { method: 'PUT', headers: { 'content-type': 'application/octet-stream', 'x-delete-token': bf.deletetoken }, body: Buffer.from(chunkCts[n]) });
+}
+r = await j(await fetch(`${API}/file/${bf.id}/consume`, { method: 'POST' }));
+check('consume now → consumed', r.status === 200 && r.body.state === 'consumed' && r.body.consumedAt > 0, JSON.stringify(r.body));
+r = await fetch(`${API}/file/${bf.id}/0`);
+check('chunks destroyed after consume', r.status === 404, `got ${r.status}`);
+r = await j(await fetch(`${API}/paste/${bf.id}`));
+check('manifest gone after consume', r.status === 410 || r.status === 404, `got ${r.status}`);
+r = await j(await fetch(`${API}/file/${bf.id}/status`, { headers: { 'x-delete-token': bf.deletetoken } }));
+check('tombstone status: consumed + events', r.status === 200 && r.body.state === 'consumed' && r.body.consumedAt > 0 && r.body.events.some((e) => e.e === 'complete'), JSON.stringify(r.body));
+r = await j(await fetch(`${API}/file/${bf.id}/consume`, { method: 'POST' }));
+check('idempotent consume echoes tombstone', r.status === 200 && r.body.state === 'consumed', JSON.stringify(r.body));
+
+// text paste: burn consume leaves a tombstone the sender can read.
+r = await j(await fetch(`${API}/paste/${b.id}/status`, { headers: { 'x-delete-token': b.deletetoken } }));
+check('text tombstone status: consumed + read event', r.status === 200 && r.body.state === 'consumed' && r.body.events.some((e) => e.e === 'read'), JSON.stringify(r.body));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

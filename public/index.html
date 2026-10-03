@@ -217,6 +217,20 @@
                             <button
                                 type="button"
                                 class="lock"
+                                id="burn-toggle"
+                                aria-pressed="true"
+                                aria-label="切换附件阅后即焚"
+                                hidden
+                            >
+                                <svg class="lock-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <path d="M12 3c1.5 3-1 4.5-1 7a3.5 3.5 0 0 0 7 .3C19.6 13 21 15 21 17a7 7 0 1 1-14 0c0-2.4 1.2-4.2 2.6-5.8C11 9.6 11.4 6.6 12 3z"
+                                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span class="lock-txt">阅后即焚</span>
+                            </button>
+                            <button
+                                type="button"
+                                class="lock"
                                 id="lock"
                                 aria-pressed="false"
                                 aria-label="使用密码保护"
@@ -504,6 +518,12 @@
                             复制链接
                         </button>
                     </div>
+                    <div class="linkrow" id="manage-row" hidden>
+                        <div class="url mono" id="manage-url"></div>
+                        <button type="button" class="copy-btn" id="copy-manage">
+                            复制管理链接
+                        </button>
+                    </div>
                     <div class="btn-row">
                         <button type="button" class="btn" id="open-link">
                             打开链接
@@ -610,6 +630,50 @@
                     <button type="button" class="btn" id="save-file" hidden>
                         保存文件
                     </button>
+                </div>
+                <div class="btn-row reveal d3" id="keep-row" hidden>
+                    <label class="keep-label" for="keep-select">阅后保留：</label>
+                    <select id="keep-select" class="expire-select" aria-label="阅后保留时长">
+                        <option value="0" selected>下载后立即销毁</option>
+                        <option value="3600">保留 1 小时</option>
+                        <option value="86400">保留 24 小时</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- ── MANAGE (sender-only, /m/<id>#<deletetoken>) ────────────────────── -->
+            <section id="view-manage" tabindex="-1" hidden>
+                <div class="head reveal d1">
+                    <p class="eyebrow">管理</p>
+                    <h1 class="title">发送状态</h1>
+                    <p class="subtitle">
+                        这里是发送方管理页：查看接收与访问记录，或随时删除。
+                        此链接含管理凭据，请勿发给接收方。
+                    </p>
+                </div>
+                <div class="stack reveal d2">
+                    <div class="pills" id="manage-pills"></div>
+                    <p class="msg" id="manage-meta" role="status"></p>
+                    <div class="status-panel">
+                        <p class="msg" style="text-align:left">访问记录（仅含时间与事件，不含访客信息）：</p>
+                        <ul class="manage-log" id="manage-log"></ul>
+                    </div>
+                    <div class="linkrow" id="manage-content-row">
+                        <div class="url mono" id="manage-content-url"></div>
+                        <button type="button" class="copy-btn" id="copy-content-url">
+                            复制内容链接
+                        </button>
+                    </div>
+                    <div class="btn-row">
+                        <a class="btn" href="./" id="manage-new">再建一条</a>
+                        <button
+                            type="button"
+                            class="btn danger btn-end"
+                            id="manage-delete"
+                        >
+                            立即删除
+                        </button>
+                    </div>
                 </div>
             </section>
 

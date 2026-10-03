@@ -4,7 +4,7 @@
 // browser and is never placed in a network request.
 
 import { encryptPaste, decryptPaste, decryptContent, deriveContentKey, PasswordRequired } from './crypto.js';
-import { createPaste, fetchPaste, fetchPasteMeta, consumePaste, deletePaste, ApiError } from './api.js';
+import { createPaste, fetchPaste, fetchPasteMeta, consumePaste, deletePaste, fetchStatus, ApiError } from './api.js';
 import { validateHead, validatePaste, buildAAD, EXPIRE_SECONDS } from './format.js';
 import { renderMarkdown } from './markdown.js';
 import { looksLikeCode, highlightInto } from './highlight.js';
@@ -20,13 +20,19 @@ import { uploadFile, downloadFile, saveAs, MAX_FILE } from './files-ui.js';
 let expiryTimer = null;
 
 // ── boot ─────────────────────────────────────────────────────────────────────
-const route = location.pathname.match(new RegExp('^' + ((window.__btBase || '').replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')) + '/p/([^/]+)/?$'));
+const route = location.pathname.match(new RegExp('^' + ((window.__btBase || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) + '/p/([^/]+)/?$'));
+const mroute = location.pathname.match(new RegExp('^' + ((window.__btBase || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) + '/m/([^/]+)/?$'));
 if (route) {
   let id = null;
   // Malformed percent-encoding must not throw during module evaluation (it
   // would leave every view hidden — a blank page). Show a proper error instead.
   try { id = decodeURIComponent(route[1]); } catch { /* fall through */ }
   if (id !== null) initView(id);
+  else status('链接格式不完整——请检查是否已完整复制。', true);
+} else if (mroute) {
+  let id = null;
+  try { id = decodeURIComponent(mroute[1]); } catch { /* fall through */ }
+  if (id !== null) initManageView(id);
   else status('链接格式不完整——请检查是否已完整复制。', true);
 } else {
   initCreate();
@@ -56,6 +62,21 @@ function initCreate() {
 
   // ── file attachment state ────────────────────────────────────────────────
   let file = null; // selected File object, null = text mode
+  // Burn toggle — attachments only. Default ON (阅后即焚: destroyed right after
+  // the receiver's complete download, with an optional keep window); OFF keeps
+  // the file until expiry and logs accesses for the sender instead. Text notes
+  // are always one-time-view; the toggle is hidden in text mode.
+  let fileBurn = true;
+  const burnBtn = $('#burn-toggle');
+  const paintBurn = () => {
+    burnBtn.classList.toggle('active', fileBurn);
+    burnBtn.setAttribute('aria-pressed', String(fileBurn));
+    burnBtn.querySelector('.lock-txt').textContent = fileBurn ? '阅后即焚' : '到期销毁';
+  };
+  if (burnBtn) {
+    paintBurn();
+    burnBtn.addEventListener('click', () => { fileBurn = !fileBurn; paintBurn(); });
+  }
   const fileInput = $('#file-input');
   const fileRow = $('#file-row');
   const fileChip = $('#file-chip');
@@ -66,11 +87,13 @@ function initCreate() {
       fileChip.textContent = `📎 ${file.name}（${fmtLabel(file.size)}）`;
       fileRow.hidden = false;
       fileClear.hidden = false;
+      if (burnBtn) burnBtn.hidden = false; // burn toggle only makes sense for files
     } else {
       fileRow.hidden = true;
       fileChip.textContent = '';
       fileClear.hidden = true;
       fileInput.value = '';
+      if (burnBtn) burnBtn.hidden = true;
     }
   };
   $('#attach-btn').addEventListener('click', () => fileInput.click());
@@ -109,6 +132,7 @@ function initCreate() {
     try {
       const { id, fragment, deletetoken } = await uploadFile(file, {
         expire: $('#expire-select').value,
+        burn: fileBurn,
         onProgress: (done, total) => setLabel(`上传中 ${done}/${total}…`),
       });
       const url = `${location.origin}${btUrl('/p/')}${id}#${fragment}`;
@@ -116,7 +140,7 @@ function initCreate() {
       paintFile();
       $('#editor').value = '';
       await leaveCreateView();
-      showSuccess({ id, deletetoken, url, isFile: true });
+      showSuccess({ id, deletetoken, url, isFile: true, isFileBurn: fileBurn });
     } catch (e) {
       showMsg(msg, friendlyError(e));
       createBtn.disabled = false;
@@ -268,46 +292,78 @@ function openPasswordModal(onSubmit) {
   $('#pw-modal-dialog').focus();
 }
 
-// Poll the non-secret head while the sender is on the success screen so the
-// "downloaded N times" line appears the moment the receiver pulls chunk 0.
-// 15s cadence: this is a reassurance signal, not a live feed. 404 → the paste
-// is gone (expired or deleted) → show its final state and stop.
+// Poll the sender status endpoint while the creator is on the success screen.
+// The server holds the event log (metadata only: time + type), so this survives
+// tab closes and works for both file and burn pastes. 15s cadence — this is a
+// reassurance signal, not a live feed. 404 → gone (expired/deleted) → final
+// state, stop. The same info is available any time via /m/<id>#<deletetoken>.
 let dlTimer = null;
-function watchDownloads(id) {
+function watchDownloads(id, token, kind = 'file') {
   if (dlTimer !== null) { clearInterval(dlTimer); dlTimer = null; }
   const el = $('#dl-status');
-  const paint = (dl) => {
+  const paint = (s) => {
     el.hidden = false;
-    el.textContent = dl && dl.count > 0
-      ? `📥 已被下载 ${dl.count} 次`
-      : '📥 还没有人下载';
+    if (s.state === 'consumed') {
+      el.textContent = `✅ 已被接收方下载并销毁${s.consumedAt ? '（' + fmtTime(s.consumedAt) + '）' : ''}`;
+    } else if (s.state === 'kept') {
+      el.textContent = `⏳ 接收方选择保留至 ${fmtTime(s.keepUntil)}`;
+    } else if (s.state === 'expired' || s.state === 'abandoned') {
+      el.textContent = s.state === 'expired' ? '📭 已到期销毁（无人下载）' : '📭 下载未完成，已回收';
+    } else {
+      const opens = s.events.filter((e) => e.e === 'download').length;
+      el.textContent = opens > 0 ? `📥 已有 ${opens} 次下载${s.state === 'armed' ? '，等待打开' : ''}` : '📥 还没有人下载';
+    }
   };
   const tick = async () => {
     try {
-      const head = await fetchPasteMeta(id);
-      paint(head.dl);
-    } catch {
+      paint(await fetchStatus(kind, id, token));
+    } catch (e) {
       if (dlTimer !== null) { clearInterval(dlTimer); dlTimer = null; }
       el.hidden = false;
-      el.textContent = '📥 链接已失效（到期或已删除）';
+      el.textContent = e instanceof ApiError && e.status === 403
+        ? '📥 状态不可用（令牌不匹配）'
+        : '📥 链接已失效（到期或已删除）';
     }
   };
   tick();
   dlTimer = setInterval(tick, 15000);
 }
 
-function showSuccess({ id, deletetoken, url, isBurn, isFile }) {
+// unix seconds → local "MM-DD HH:mm" for status lines.
+function fmtTime(unixSeconds) {
+  if (!Number.isInteger(unixSeconds) || unixSeconds <= 0) return '';
+  const d = new Date(unixSeconds * 1000);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function showSuccess({ id, deletetoken, url, isBurn, isFile, isFileBurn }) {
   showView('success');
   $('#paste-url').textContent = url;
   if (isFile) {
-    $('#success-note').textContent =
-      '文件已加密上传。任何持有此链接的人都可下载（可重复打开直到到期自动销毁）。';
+    $('#success-note').textContent = isFileBurn
+      ? '附件默认阅后即焚：接收方完整下载后立即销毁（可由接收方选择保留一段时间）。'
+      : '附件保留到到期自动销毁，期间每次下载都会记录在管理页。';
   } else if (isBurn) {
     $('#success-note').textContent =
       '任何持有此链接的人都只能阅读一次。';
   }
   renderQr(url);
-  if (isFile && id) watchDownloads(id);
+  // Persistent sender view: /m/<id>#<deletetoken> — token IS the credential,
+  // same trust model as the delete button. Survives tab/browser closes, unlike
+  // the old in-memory download counter.
+  const murl = `${location.origin}${btUrl('/m/')}${id}#${deletetoken}`;
+  const mrow = $('#manage-row');
+  if (mrow) mrow.hidden = !(isFile || isBurn);
+  const mEl = $('#manage-url');
+  if (mEl) mEl.textContent = murl;
+  const mCopy = $('#copy-manage');
+  if (mCopy) mCopy.onclick = async () => {
+    flashCopied(mCopy, (await copyText(murl)) ? '已复制' : '复制失败');
+  };
+  const mOpen = $('#open-manage');
+  if (mOpen) mOpen.onclick = () => { location.href = murl; };
+  if (isFile || isBurn) watchDownloads(id, deletetoken, isFile ? 'file' : 'paste');
   else $('#dl-status').hidden = true;
 
   $('#copy-url').onclick = async () => {
@@ -422,33 +478,54 @@ async function tryFilePaste(paste, id, fragment) {
       || !Array.isArray(man.ivs) || man.ivs.length !== man.chunks) {
     throw new Error('not a file paste');
   }
+  const burn = !!paste.adata.bar; // burn-on-download mode
   showView('paste');
   const pills = $('#paste-pills');
   pills.textContent = '';
   pills.appendChild(pill(`文件 ${man.name} · ${man.size > 1048576 ? (man.size / 1048576).toFixed(1) + ' MiB' : Math.ceil(man.size / 1024) + ' KiB'}`));
+  if (burn) pills.appendChild(pill('阅后即焚 · 下载后销毁', 'bad'));
   const container = $('#paste-content');
   container.textContent = '';
   const pre = document.createElement('pre');
   pre.className = 'code';
-  pre.textContent = `📎 ${man.name}\n大小：${man.size} 字节 · ${man.chunks} 个加密分块\n\n点击下方「保存文件」下载并解密到本地。`;
+  pre.textContent = burn
+    ? `📎 ${man.name}\n大小：${man.size} 字节 · ${man.chunks} 个加密分块\n\n点击下方「下载并销毁」下载解密到本地——完成后服务器立即销毁此文件。`
+    : `📎 ${man.name}\n大小：${man.size} 字节 · ${man.chunks} 个加密分块\n\n点击下方「保存文件」下载并解密到本地。`;
   container.appendChild(pre);
   const rawBtn = $('#toggle-raw');
   rawBtn.hidden = true;
   const saveBtn = $('#save-file');
   saveBtn.hidden = false;
   saveBtn.disabled = false;
-  saveBtn.textContent = '保存文件';
+  saveBtn.textContent = burn ? '下载并销毁' : '保存文件';
+  // Burn mode: a small keep picker beside the button — "destroy now" is the
+  // default; the receiver may ask for a bounded window (capped server-side by
+  // the paste's own expiry). Hidden in retention mode.
+  const keepSel = $('#keep-select');
+  const keepRow = $('#keep-row');
+  if (keepRow) keepRow.hidden = !burn;
   saveBtn.onclick = async () => {
     saveBtn.disabled = true;
     saveBtn.textContent = '下载解密中……';
+    const keepSeconds = burn && keepSel ? Number(keepSel.value || 0) : 0;
     try {
-      const { name, size, bytes } = await downloadFile(id, fragment);
+      const { name, size, bytes, consumed } = await downloadFile(id, fragment, { keepSeconds });
       saveAs({ name, bytes });
-      saveBtn.textContent = `已保存 ${name}（${size} 字节）`;
+      if (burn && consumed) {
+        saveBtn.textContent = consumed.state === 'kept'
+          ? `已保存；文件保留至 ${fmtTime(consumed.keepUntil)}`
+          : `已保存 ${name}（${size} 字节）；原文件已销毁`;
+        saveBtn.disabled = true; // nothing left to download
+      } else if (burn) {
+        saveBtn.textContent = `已保存 ${name}（${size} 字节）`;
+      } else {
+        saveBtn.textContent = `已保存 ${name}（${size} 字节）`;
+        saveBtn.disabled = false; // retention mode: repeat downloads allowed
+      }
     } catch (e) {
       toast(e && e.message ? e.message : '下载失败');
       saveBtn.disabled = false;
-      saveBtn.textContent = '保存文件';
+      saveBtn.textContent = burn ? '下载并销毁' : '保存文件';
     }
   };
   return true;
@@ -610,6 +687,115 @@ function handleReadError(e) {
     status('该内容已过期或已被阅读。', true);
   } else {
     status('该内容已过期、已被阅读，或从未存在。', true);
+  }
+}
+
+// ── MANAGE (/m/<id>#<deletetoken>) ───────────────────────────────────────────
+// Sender-only view. The fragment carries the DELETE TOKEN — the same secret
+// that powers the delete button — so this link authorizes status reads and
+// deletion, never decryption. Rendered with DOM construction only.
+const EVENT_LABELS = {
+  read: '被阅读',
+  download: '开始下载',
+  complete: '下载完成',
+};
+function initManageView(id) {
+  const fragment = location.hash.slice(1);
+  if (!fragment) { status('管理链接缺少凭据——请使用创建时保存的管理链接。', true); return; }
+  const kind = id[0] === 'f' ? 'file' : 'paste';
+
+  const paint = (s) => {
+    showView('manage');
+    const pills = $('#manage-pills');
+    pills.textContent = '';
+    const statePill = {
+      armed: ['待接收 · 仅可查看一次', 'warn'],
+      live: ['存活中', 'ok'],
+      consumed: ['已被接收', 'bad'],
+      kept: ['接收方保留中', 'warn'],
+      expired: ['已到期销毁', 'bad'],
+      abandoned: ['下载未完成 · 已回收', 'bad'],
+    }[s.state] || [s.state, ''];
+    pills.appendChild(pill(statePill[0], statePill[1]));
+    if (s.keepUntil) pills.appendChild(pill(`保留至 ${fmtTime(s.keepUntil)}`, 'warn'));
+    if (s.exp > 0) pills.appendChild(pill(`${s.consumedAt || s.state === 'expired' ? '原' : ''}到期 ${fmtTime(s.exp)}`));
+
+    const meta = $('#manage-meta');
+    meta.textContent = '';
+    if (s.meta && Number.isInteger(s.meta.created)) {
+      meta.textContent = `创建于 ${fmtTime(s.meta.created)}`;
+    }
+
+    // Event log, newest first. Metadata only (time + type) by design.
+    const log = $('#manage-log');
+    log.textContent = '';
+    const events = [...s.events].reverse();
+    if (!events.length) {
+      const li = document.createElement('li');
+      li.textContent = '还没有任何访问记录。';
+      log.appendChild(li);
+    }
+    for (const ev of events) {
+      const li = document.createElement('li');
+      li.textContent = `${fmtTime(ev.t)} · ${EVENT_LABELS[ev.e] || ev.e}`;
+      log.appendChild(li);
+    }
+
+    // Content link is only shown while content still exists.
+    const crow = $('#manage-content-row');
+    if (crow) {
+      crow.hidden = !['armed', 'live', 'kept'].includes(s.state);
+      const curl = `${location.origin}${btUrl('/p/')}${id}`;
+      const cEl = $('#manage-content-url');
+      if (cEl) cEl.textContent = curl;
+      const cCopy = $('#copy-content-url');
+      if (cCopy) cCopy.onclick = async () => {
+        flashCopied(cCopy, (await copyText(curl)) ? '已复制' : '复制失败');
+      };
+    }
+    const delBtn = $('#manage-delete');
+    if (delBtn) {
+      delBtn.disabled = !['armed', 'live', 'kept'].includes(s.state);
+      delBtn.textContent = ['armed', 'live', 'kept'].includes(s.state) ? '立即删除' : '已销毁';
+    }
+  };
+
+  const refresh = async () => {
+    try { paint(await fetchStatus(kind, id, fragment)); return true; }
+    catch (e) {
+      if (e instanceof ApiError && e.status === 403) {
+        status('凭据不匹配——这条管理链接不属于此内容。', true);
+      } else if (e instanceof ApiError && e.status === 404) {
+        status('记录已过期清理（销毁记录保留 7 天）。', true);
+      } else {
+        status('无法连接服务器——请检查网络后重试。', true);
+      }
+      return false;
+    }
+  };
+  refresh();
+  clearInterval(dlTimer);
+  dlTimer = setInterval(async () => {
+    // Stop polling once the content is gone for good.
+    if (!(await refresh()) && dlTimer !== null) { clearInterval(dlTimer); dlTimer = null; }
+  }, 15000);
+
+  const delBtn = $('#manage-delete');
+  if (delBtn) {
+    armConfirm(delBtn, '永久删除？', async () => {
+      delBtn.disabled = true;
+      delBtn.textContent = '删除中……';
+      try {
+        await deletePaste(id, fragment);
+        toast('已删除');
+        clearInterval(dlTimer); dlTimer = null;
+        await refresh();
+      } catch {
+        delBtn.disabled = false;
+        delBtn.textContent = '立即删除';
+        toast('删除失败，请重试');
+      }
+    });
   }
 }
 

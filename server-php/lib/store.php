@@ -5,6 +5,19 @@
 //   <data>/tmp/            — staging for atomic rename() into place
 // All writes land in tmp/ first; a crash never leaves a half-written paste.
 
+// ── event log & tombstones ───────────────────────────────────────────────────
+// A consumed/expired/abandoned paste leaves a TOMBSTONE meta record behind (no
+// paste body, no blobs): { state, dth, exp, events, consumedAt?, meta,
+// origExp }. The sender (deletetoken holder) reads it via
+// GET /api/<kind>/<id>/status; content links answer 410 as before. Tombstones
+// expire after BT_TOMBSTONE_TTL. Events are metadata only (time + type) —
+// never IPs or UAs; this stays a zero-knowledge product, not a visitor tracker.
+
+const BT_EVENT_CAP = 100;        // max events kept per paste
+const BT_EVENT_WINDOW = 30;      // same-type events within N s collapse into one
+const BT_TOMBSTONE_TTL = 604800; // tombstone retention: 7 days
+const BT_ZOMBIE_SECONDS = 86400; // chunk-0 fetched but download never finished
+
 const BT_RL_CREATE = 30;  // paste creates per IP per minute
 const BT_RL_PUT = 60;     // chunk PUTs per IP per minute
 
@@ -48,6 +61,53 @@ function store_update_meta(string $dataDir, string $id, array $rec) {
     $tmp = "{$dataDir}/tmp/" . bin2hex(random_bytes(8)) . '.json';
     file_put_contents($tmp, json_encode($rec, JSON_UNESCAPED_SLASHES), LOCK_EX);
     rename($tmp, store_meta_path($dataDir, $id));
+}
+
+/** Append an event to a live paste's log. Same-type events within
+ *  BT_EVENT_WINDOW collapse (page reloads, parallel chunk fetches), the log is
+ *  capped at BT_EVENT_CAP. Best-effort: a lost read-modify-write race drops one
+ *  event, never content. No-op on tombstones and missing pastes. */
+function store_log_event(string $dataDir, string $id, string $type) { // prod PHP 7.0: no void return type
+    $rec = store_get_meta($dataDir, $id);
+    if ($rec === null || !isset($rec['p'])) return; // gone or tombstone
+    $now = time();
+    $events = $rec['events'] ?? [];
+    foreach (array_reverse($events) as $last) {
+        if (($last['e'] ?? '') === $type) {
+            if ($now - (int)($last['t'] ?? 0) <= BT_EVENT_WINDOW) return; // same session
+            break;
+        }
+    }
+    $events[] = ['t' => $now, 'e' => $type];
+    if (count($events) > BT_EVENT_CAP) $events = array_slice($events, -BT_EVENT_CAP);
+    $rec['events'] = $events;
+    store_update_meta($dataDir, $id, $rec);
+}
+
+/** Convert a live paste into a tombstone: keep the token hash, meta, event log;
+ *  drop the paste body and every blob. Idempotent; returns the tombstone, or
+ *  null when there is nothing to tombstone (never existed). */
+function store_tombstone(string $dataDir, string $id, string $state) {
+    $rec = store_get_meta($dataDir, $id);
+    if ($rec === null) return null;
+    if (!isset($rec['p'])) return $rec; // already a tombstone
+    $tomb = [
+        'state' => $state,
+        'dth' => $rec['dth'],
+        'exp' => time() + BT_TOMBSTONE_TTL,
+        'events' => $rec['events'] ?? [],
+        'consumedAt' => $state === 'consumed' ? time() : null,
+        'meta' => $rec['p']['meta'] ?? null,
+        'origExp' => $rec['exp'],
+    ];
+    if ($tomb['consumedAt'] === null) unset($tomb['consumedAt']);
+    store_update_meta($dataDir, $id, $tomb);
+    $dir = store_blob_dir($dataDir, $id);
+    if (is_dir($dir)) {
+        foreach (glob("{$dir}/*") ?: [] as $f) @unlink($f);
+        @rmdir($dir);
+    }
+    return $tomb;
 }
 
 /** Allocate a fresh id of $cls (retries on the astronomically rare collision). */
@@ -102,6 +162,11 @@ function store_chunk_count(string $dataDir, string $id): int {
  */
 function store_consume_burn(string $dataDir, string $id) {
     $meta = store_meta_path($dataDir, $id);
+    // Tombstones must survive repeated consume attempts (the sender reads the
+    // status afterwards; a second consume must not destroy the record). So
+    // peek FIRST — only a live paste goes through the rename race below.
+    $existing = store_get_meta($dataDir, $id);
+    if ($existing !== null && !isset($existing['p'])) return null; // tombstone: 410, keep record
     $tmp = "{$dataDir}/tmp/" . bin2hex(random_bytes(8)) . '.consume';
     if (!@rename($meta, $tmp)) return null; // already consumed or gone
     $raw = @file_get_contents($tmp);
@@ -114,6 +179,7 @@ function store_consume_burn(string $dataDir, string $id) {
     if ($raw === false) return null;
     $rec = json_decode($raw, true);
     if (!is_array($rec)) return null;
+    if (!isset($rec['p'])) return null; // raced into a tombstone → nothing to consume
     if ($rec['exp'] > 0 && $rec['exp'] <= time()) return null;
     return $rec;
 }
@@ -135,9 +201,23 @@ function store_sweep_expired(string $dataDir) {
     foreach (glob("{$dataDir}/meta/*.json") ?: [] as $f) {
         $rec = json_decode((string)@file_get_contents($f), true);
         if (!is_array($rec)) continue;
+        $id = basename($f, '.json');
+        if (isset($rec['p'])) {
+            // Zombie guard: chunks were being pulled but the transfer never
+            // completed — reclaim the storage after the window.
+            if (isset($rec['firstdl']) && $now - (int)$rec['firstdl'] > BT_ZOMBIE_SECONDS) {
+                store_tombstone($dataDir, $id, 'abandoned');
+                continue;
+            }
+            // A receiver's keep window ran out → tombstone as a natural expiry.
+            if (isset($rec['keepUntil']) && $rec['keepUntil'] <= $now) {
+                store_tombstone($dataDir, $id, 'expired');
+                continue;
+            }
+        }
         if ($rec['exp'] > 0 && $rec['exp'] <= $now) {
-            $id = basename($f, '.json');
-            store_delete($dataDir, $id);
+            if (isset($rec['p'])) store_tombstone($dataDir, $id, 'expired');
+            else store_delete($dataDir, $id); // tombstone past its retention
         }
     }
 }
