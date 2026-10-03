@@ -26,7 +26,9 @@ export default defineConfig({
     // The CLI's suites run in plain Node via their own project
     // (cli/vitest.config.js), and the DOM-mount suites run under happy-dom
     // (vitest.dom.config.js) — keep both out of the workerd pool.
-    exclude: ['**/node_modules/**', 'cli/**', 'test-dom/**'],
+    // server-php/ holds the self-host PHP backend's Node-driven e2e (needs a
+    // live php-fpm / base URL) — never runnable inside the workerd pool.
+    exclude: ['**/node_modules/**', 'cli/**', 'test-dom/**', 'server-php/**'],
     coverage: {
       // istanbul (source instrumentation), NOT v8: the v8 provider needs
       // node:inspector, which doesn't exist inside workerd.
@@ -34,7 +36,9 @@ export default defineConfig({
       include: ['src/**/*.js', 'public/js/**/*.js'],
       // Vendored library and browser-only glue with no DOM test harness
       // (see README roadmap: Playwright e2e would cover these).
-      exclude: ['public/js/qrcode.js', 'public/js/{api,ui,app,theme,theme-init,announce,stars}.js'],
+      // base.js / files-ui.js are self-host extensions exercised by the live
+      // e2e + real-browser verification, not by the workerd unit pool.
+      exclude: ['public/js/qrcode.js', 'public/js/{api,ui,app,theme,theme-init,announce,stars,base,files-ui}.js'],
       // Floors, not targets — catch a large untested addition, don't block
       // small refactors. Measured 2026-07: ~84% statements / ~79% branches.
       thresholds: { statements: 80, branches: 70 },
