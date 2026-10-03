@@ -102,9 +102,12 @@ const reassembled = new Uint8Array(man.size);
 for (let n = 0; n < man.chunks; n++) {
   r = await fetch(`${API}/file/${f.id}/${n}`);
   check(`chunk ${n} get 200`, r.status === 200, `got ${r.status}`);
-  const bytes = new Uint8Array(await r.arrayBuffer());
-  check(`chunk ${n} byte length`, bytes.length === chunkCts[n].length, `${bytes.length} vs ${chunkCts[n].length}`);
-  reassembled.set(bytes, n * CHUNK);
+  const ctBytes = new Uint8Array(await r.arrayBuffer());
+  check(`chunk ${n} byte length`, ctBytes.length === chunkCts[n].length, `${ctBytes.length} vs ${chunkCts[n].length}`);
+  // server stores ciphertext (payload + 16B GCM tag); decrypt back to plaintext
+  const plain = await C.aesGcmDecrypt(await C.deriveContentKey({ adata: fbody.adata, wk: fbody.wk, fragment: B.b64urlFromBytes(F) }),
+    B.bytesFromB64url(manifest.ivs[n]), ctBytes, new TextEncoder().encode(`${f.id}:${n}`));
+  reassembled.set(plain, n * CHUNK);
 }
 check('roundtrip identical', reassembled.length === fileSize && reassembled.every((v, i) => v === fileBytes[i]));
 

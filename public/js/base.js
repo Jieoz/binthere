@@ -1,12 +1,15 @@
 // base.js — deployment base-path support (self-host extension).
-// index.html sets <script>window.BT_BASE='/temp'</script> before this; the
-// default for upstream/Worker deploys is '' (root mount), byte-identical URLs.
+// The mount point comes from <html data-bt-base="/temp"> — a data attribute,
+// not an inline script, because the CSP (script-src 'self') forbids inline JS.
+// Absent attribute (upstream/Worker deploys) → '' → byte-identical URLs.
 // All fetch/URL construction in api.js/app.js/stars.js goes through btUrl().
 (function () {
   let base = '';
   try {
-    base = typeof window !== 'undefined' && typeof window.BT_BASE === 'string' ? window.BT_BASE : '';
-  } catch { /* no window (tests) — keep '' */ }
+    if (typeof document !== 'undefined') {
+      base = document.documentElement.getAttribute('data-bt-base') || '';
+    }
+  } catch { /* no document (tests) — keep '' */ }
   if (base.endsWith('/')) base = base.slice(0, -1);
   if (typeof window !== 'undefined') window.__btBase = base;
 })();

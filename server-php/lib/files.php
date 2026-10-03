@@ -49,7 +49,12 @@ function route_file(string $method, string $path, string $dataDir): bool {
         get_chunk($id, (int)$m[2], $dataDir);
         return true;
     }
-    json_error(405, 'Method not allowed.', ['Allow' => 'PUT, GET']);
+    // DELETE /api/file/<id> — whole-paste delete, same token contract as text.
+    if ($method === 'DELETE' && !isset($m[2])) {
+        delete_paste($id, $dataDir); // in api.php; exits
+        return true;
+    }
+    json_error(405, 'Method not allowed.', ['Allow' => 'PUT, GET, DELETE']);
 }
 
 /** PUT one ciphertext chunk. Idempotent: re-uploading the identical index is
