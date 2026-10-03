@@ -10,6 +10,7 @@ import { renderMarkdown } from './markdown.js';
 import { looksLikeCode, highlightInto } from './highlight.js';
 import { $, showView, toast, copyText, flashCopied, pill } from './ui.js';
 import { btUrl } from './base.js';
+import { uploadFile, downloadFile, saveAs, MAX_FILE } from './files-ui.js';
 
 // Module-level state referenced by helpers that may run during the top-level
 // route dispatch below. Declared here (not near the timer helpers further down)
@@ -53,8 +54,39 @@ function initCreate() {
   const sendTxt = createBtn.querySelector('.send-txt');
   const msg = $('#create-msg');
 
+  // ── file attachment state ────────────────────────────────────────────────
+  let file = null; // selected File object, null = text mode
+  const fileInput = $('#file-input');
+  const fileRow = $('#file-row');
+  const fileChip = $('#file-chip');
+  const fileClear = $('#file-clear');
+  const fmtLabel = (n) => n > 1024 * 1024 ? (n / 1048576).toFixed(1) + ' MiB' : Math.ceil(n / 1024) + ' KiB';
+  const paintFile = () => {
+    if (file) {
+      fileChip.textContent = `📎 ${file.name}（${fmtLabel(file.size)}）`;
+      fileRow.hidden = false;
+      fileClear.hidden = false;
+    } else {
+      fileRow.hidden = true;
+      fileChip.textContent = '';
+      fileClear.hidden = true;
+      fileInput.value = '';
+    }
+  };
+  $('#attach-btn').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    if (f.size > MAX_FILE) { showMsg(msg, `文件过大（上限 ${Math.floor(MAX_FILE / 1048576)} MiB）。`); return; }
+    file = f;
+    paintFile();
+    msg.hidden = true;
+  });
+  fileClear.addEventListener('click', () => { file = null; paintFile(); });
+
   const requestCreate = () => {
     if (createBtn.disabled) return;
+    if (file) { submitFile(); return; }
     if (!$('#editor').value.trim()) { showMsg(msg, '先写点内容。'); $('#editor').focus(); return; }
     msg.hidden = true;
     if (pwRequired) openPasswordModal((password) => submitPaste(password));
@@ -65,6 +97,31 @@ function initCreate() {
   $('#editor').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); requestCreate(); }
   });
+
+  // ── file upload path ─────────────────────────────────────────────────────
+  // Files skip the arrow choreography: the button relabels to per-chunk
+  // progress, which is the honest signal during a multi-second transfer.
+  async function submitFile() {
+    createBtn.disabled = true;
+    const label = sendTxt ? sendTxt.textContent : '';
+    const setLabel = (t) => { if (sendTxt) sendTxt.textContent = t; };
+    setLabel('加密中……');
+    try {
+      const { id, fragment } = await uploadFile(file, {
+        onProgress: (done, total) => setLabel(`上传中 ${done}/${total}…`),
+      });
+      const url = `${location.origin}${btUrl('/p/')}${id}#${fragment}`;
+      file = null;
+      paintFile();
+      $('#editor').value = '';
+      await leaveCreateView();
+      showSuccess({ url, isFile: true });
+    } catch (e) {
+      showMsg(msg, friendlyError(e));
+      createBtn.disabled = false;
+      setLabel(label);
+    }
+  }
 
   // Every note is one-time view (bar:true) and auto-deletes within 24h — a
   // deliberate product choice, not a missing picker. The wire format (and the
@@ -210,10 +267,13 @@ function openPasswordModal(onSubmit) {
   $('#pw-modal-dialog').focus();
 }
 
-function showSuccess({ id, deletetoken, url, isBurn }) {
+function showSuccess({ id, deletetoken, url, isBurn, isFile }) {
   showView('success');
   $('#paste-url').textContent = url;
-  if (isBurn) {
+  if (isFile) {
+    $('#success-note').textContent =
+      '文件已加密上传。任何持有此链接的人都可下载一次（可重复打开直到 24 小时后自动销毁）。';
+  } else if (isBurn) {
     $('#success-note').textContent =
       '任何持有此链接的人都只能阅读一次。';
   }
@@ -304,12 +364,63 @@ async function initNormalView(id, fragment) {
   status('解密中……');
   let paste;
   try { paste = await fetchPaste(id); } catch (e) { return handleReadError(e); }
+  // File pastes carry an encrypted manifest (name/size/chunks/ivs) instead of
+  // text. Detect by decrypting as a manifest first; fall back to text view.
+  try {
+    const info = await tryFilePaste(paste, id, fragment);
+    if (info) return;
+  } catch { /* not a file — fall through to text path */ }
   try {
     renderPaste(paste, await decryptPaste({ paste, fragment }));
   } catch (e) {
     if (e instanceof PasswordRequired) return promptPasswordNormal(paste, fragment);
     status('无法解密该内容。链接可能已损坏或被改动。', true);
   }
+}
+
+// Returns true if the paste was rendered as a file download. Throws when it
+// isn't a valid file paste (caller falls back to the text path).
+async function tryFilePaste(paste, id, fragment) {
+  const cek = await deriveContentKey({ adata: paste.adata, wk: paste.wk, fragment });
+  let man;
+  try {
+    const content = await decryptContent({ adata: paste.adata, ct: paste.ct, cek });
+    man = JSON.parse(content.text);
+  } catch { throw new Error('not a file paste'); }
+  if (!man || typeof man.size !== 'number' || typeof man.chunks !== 'number'
+      || !Array.isArray(man.ivs) || man.ivs.length !== man.chunks) {
+    throw new Error('not a file paste');
+  }
+  showView('paste');
+  const pills = $('#paste-pills');
+  pills.textContent = '';
+  pills.appendChild(pill(`文件 ${man.name} · ${man.size > 1048576 ? (man.size / 1048576).toFixed(1) + ' MiB' : Math.ceil(man.size / 1024) + ' KiB'}`));
+  const container = $('#paste-content');
+  container.textContent = '';
+  const pre = document.createElement('pre');
+  pre.className = 'code';
+  pre.textContent = `📎 ${man.name}\n大小：${man.size} 字节 · ${man.chunks} 个加密分块\n\n点击下方「保存文件」下载并解密到本地。`;
+  container.appendChild(pre);
+  const rawBtn = $('#toggle-raw');
+  rawBtn.hidden = true;
+  const saveBtn = $('#save-file');
+  saveBtn.hidden = false;
+  saveBtn.disabled = false;
+  saveBtn.textContent = '保存文件';
+  saveBtn.onclick = async () => {
+    saveBtn.disabled = true;
+    saveBtn.textContent = '下载解密中……';
+    try {
+      const { name, size, bytes } = await downloadFile(id, fragment);
+      saveAs({ name, bytes });
+      saveBtn.textContent = `已保存 ${name}（${size} 字节）`;
+    } catch (e) {
+      toast(e && e.message ? e.message : '下载失败');
+      saveBtn.disabled = false;
+      saveBtn.textContent = '保存文件';
+    }
+  };
+  return true;
 }
 
 // Burn paste: peek the head (adata + wrapped key, NO ciphertext) without

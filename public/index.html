@@ -189,8 +189,26 @@
                         spellcheck="false"
                     ></textarea>
 
+                    <div class="file-row" id="file-row" hidden>
+                        <input type="file" id="file-input" hidden aria-label="选择文件" />
+                        <span class="file-chip" id="file-chip"></span>
+                        <button type="button" class="copy-btn" id="file-clear" hidden>移除</button>
+                    </div>
+
                     <div class="editor-bar">
                         <div class="editor-bar-left">
+                            <button
+                                type="button"
+                                class="lock"
+                                id="attach-btn"
+                                aria-label="附加文件"
+                            >
+                                <svg class="lock-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+                                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span class="lock-txt">附件</span>
+                            </button>
                             <button
                                 type="button"
                                 class="lock"
@@ -443,6 +461,7 @@
                     </p>
                 </div>
                 <div class="stack reveal d2">
+                    <p class="msg" id="file-dl" role="status" hidden></p>
                     <!-- The sealed artifact: a guilloché rosette — the security-print
              seal — draws itself above the QR, pressing the note shut. -->
                     <div class="seal">
@@ -581,6 +600,9 @@
                     </button>
                     <button type="button" class="btn" id="toggle-raw">
                         原文
+                    </button>
+                    <button type="button" class="btn" id="save-file" hidden>
+                        保存文件
                     </button>
                 </div>
             </section>
