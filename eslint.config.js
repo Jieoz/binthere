@@ -7,7 +7,7 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
-  { ignores: ['node_modules/**', 'public/js/qrcode.js', '.wrangler/**', 'coverage/**', 'cli/vendor/**'] },
+  { ignores: ['node_modules/**', 'public/js/qrcode.js', '.wrangler/**', 'coverage/**', 'cli/vendor/**', 'server-php/**', 'deploy/**'] },
 
   js.configs.recommended,
 
