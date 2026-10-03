@@ -27,24 +27,25 @@
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta name="twitter:card" content="summary_large_image" />
-        <link rel="icon" type="image/svg+xml" href="/img/favicon.svg" />
+        <link rel="icon" type="image/svg+xml" href="img/favicon.svg" />
         <!-- PNG fallbacks: Safari ignores SVG favicons; iOS wants a full-bleed square.
        A real /favicon.ico (16+32+48) also exists for agents that probe by convention. -->
-        <link rel="icon" type="image/png" sizes="16x16" href="/img/favicon-16.png" />
-        <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png" />
-        <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="img/favicon-16.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png" />
+        <link rel="apple-touch-icon" href="img/apple-touch-icon.png" />
         <!-- Blocking, first-party (CSP-safe): sets the theme class before paint so
        there's no light/dark flash. Must precede the stylesheet. -->
-        <script src="/js/theme-init.js"></script>
-        <link rel="stylesheet" href="/css/styles.css" />
+        <script>window.BT_BASE='/temp';</script>
+        <script src="js/theme-init.js"></script>
+        <link rel="stylesheet" href="css/styles.css" />
         <!-- No <link rel="manifest">: the specified CSP has no manifest-src, so a
        manifest would be blocked by default-src 'none'. PWA install is out of scope. -->
         <!-- CSP is set as a response header (public/_headers). Scripts/styles/fonts are first-party only. -->
-        <script defer src="/js/qrcode.js"></script>
-        <script defer src="/js/theme.js"></script>
-        <script defer src="/js/announce.js"></script>
-        <script defer src="/js/stars.js"></script>
-        <script type="module" src="/js/app.js"></script>
+        <script defer src="js/qrcode.js"></script>
+        <script defer src="js/theme.js"></script>
+        <script defer src="js/announce.js"></script>
+        <script defer src="js/stars.js"></script>
+        <script type="module" src="js/app.js"></script>
     </head>
     <body>
         <!-- Slim announcement bar. Hidden by default so returning/dismissed
@@ -94,7 +95,7 @@
             </g>
         </svg>
         <header class="topbar reveal">
-            <a class="brand" href="/" id="brand" aria-label="binthere — home">
+            <a class="brand" href="./" id="brand" aria-label="binthere — home">
                 <span class="wm-a">bin</span><span class="wm-b">there</span>
             </a>
             <div class="topbar-right">
@@ -127,7 +128,7 @@
                         <span class="gh-count mono" id="gh-count"></span>
                     </span>
                 </a>
-                <a class="back" id="newlink" href="/" hidden
+                <a class="back" id="newlink" href="./" hidden
                     ><span class="arrow">＋</span><span>new paste</span></a
                 >
                 <button
@@ -484,7 +485,7 @@
                         <button type="button" class="btn" id="open-link">
                             Open link
                         </button>
-                        <a class="btn" href="/" id="another">Create another</a>
+                        <a class="btn" href="./" id="another">Create another</a>
                         <button
                             type="button"
                             class="btn danger btn-end"
@@ -634,7 +635,7 @@
                         >
                     </p>
                     <div class="btn-row center" id="status-new" hidden>
-                        <a class="cta cta-inline" href="/" id="status-new-link"
+                        <a class="cta cta-inline" href="./" id="status-new-link"
                             >Create new paste</a
                         >
                     </div>
@@ -659,7 +660,7 @@
                         target="_blank"
                         >Threat Model</a
                     >
-                    <a href="/.well-known/security.txt" rel="noopener"
+                    <a href="./.well-known/security.txt" rel="noopener"
                         >Security</a
                     >
                     <a href="https://gaury.dev" rel="noopener"

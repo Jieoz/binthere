@@ -34,7 +34,7 @@
   }
   if (cached && /^\d{1,9}$/.test(cached)) show(Number(cached));
 
-  fetch('/api/stars')
+  fetch((window.__btBase || '') + '/api/stars')
     .then(function (res) {
       return res.ok ? res.json() : null;
     })

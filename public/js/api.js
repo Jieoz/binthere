@@ -4,6 +4,8 @@
 // server/proxy regression fails closed as a protocol error instead of leaking
 // into UI state (e.g. a "/p/undefined#…" share link).
 
+import { btUrl } from './base.js';
+
 export class ApiError extends Error {
   constructor(message, status) {
     super(message);
@@ -35,7 +37,7 @@ async function throwHttpError(res, fallback) {
 
 /** Create a paste. `body` is the format-v1 object. Returns { id, deletetoken }. */
 export async function createPaste(body) {
-  const res = await fetch('/api/paste', {
+  const res = await fetch(btUrl('/api/paste'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -52,7 +54,7 @@ export async function createPaste(body) {
 
 /** Fetch a paste (never consumes — burn ids answer with their head). */
 export async function fetchPaste(id) {
-  const res = await fetch(`/api/paste/${encodeURIComponent(id)}`, { cache: 'no-store' });
+  const res = await fetch(btUrl(`/api/paste/${encodeURIComponent(id)}`), { cache: 'no-store' });
   if (!res.ok) await throwHttpError(res, 'Not found.');
   return requireObject(await readJson(res));
 }
@@ -63,7 +65,7 @@ export async function fetchPaste(id) {
  * single destructive read.
  */
 export async function fetchPasteMeta(id) {
-  const res = await fetch(`/api/paste/${encodeURIComponent(id)}?meta=1`, { cache: 'no-store' });
+  const res = await fetch(btUrl(`/api/paste/${encodeURIComponent(id)}?meta=1`), { cache: 'no-store' });
   if (!res.ok) await throwHttpError(res, 'Not found.');
   return requireObject(await readJson(res));
 }
@@ -74,7 +76,7 @@ export async function fetchPasteMeta(id) {
  * reachable by an ambient cross-origin GET.
  */
 export async function consumePaste(id) {
-  const res = await fetch(`/api/paste/${encodeURIComponent(id)}/consume`, {
+  const res = await fetch(btUrl(`/api/paste/${encodeURIComponent(id)}/consume`), {
     method: 'POST',
     headers: { 'x-burn-intent': 'consume' },
     cache: 'no-store',
@@ -88,7 +90,7 @@ export async function consumePaste(id) {
  * in the URL — so it cannot end up in server/proxy request-URL logs.
  */
 export async function deletePaste(id, token) {
-  const res = await fetch(`/api/paste/${encodeURIComponent(id)}`, {
+  const res = await fetch(btUrl(`/api/paste/${encodeURIComponent(id)}`), {
     method: 'DELETE',
     headers: { 'x-delete-token': token },
   });

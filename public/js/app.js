@@ -9,6 +9,7 @@ import { validateHead, validatePaste, buildAAD, EXPIRE_SECONDS } from './format.
 import { renderMarkdown } from './markdown.js';
 import { looksLikeCode, highlightInto } from './highlight.js';
 import { $, showView, toast, copyText, flashCopied, pill } from './ui.js';
+import { btUrl } from './base.js';
 
 // Module-level state referenced by helpers that may run during the top-level
 // route dispatch below. Declared here (not near the timer helpers further down)
@@ -18,7 +19,7 @@ import { $, showView, toast, copyText, flashCopied, pill } from './ui.js';
 let expiryTimer = null;
 
 // ── boot ─────────────────────────────────────────────────────────────────────
-const route = location.pathname.match(/^\/p\/([^/]+)\/?$/);
+const route = location.pathname.match(new RegExp('^' + ((window.__btBase || '').replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')) + '/p/([^/]+)/?$'));
 if (route) {
   let id = null;
   // Malformed percent-encoding must not throw during module evaluation (it
@@ -95,7 +96,7 @@ function initCreate() {
         expire: '1day',
       });
       const { id, deletetoken } = await createPaste(body);
-      const url = `${location.origin}/p/${id}#${fragment}`;
+      const url = `${location.origin}${btUrl('/p/')}${id}#${fragment}`;
       clearTimeout(relabel);
       if (arrowGone) await arrowGone; // never hand over ahead of the arrow
       await leaveCreateView();
@@ -224,7 +225,7 @@ function showSuccess({ id, deletetoken, url, isBurn }) {
   // Both irreversible actions are two-step: opening a one-time link consumes it,
   // and delete is permanent. A stray click must not kill a note about to be shared.
   armConfirm($('#open-link'), 'Uses the one view — open?', () => { location.href = url; });
-  $('#another').onclick = () => { location.href = '/'; };
+  $('#another').onclick = () => { location.href = btUrl('/'); };
 
   const delBtn = $('#delete-btn');
   const sMsg = $('#success-msg');
